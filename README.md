@@ -39,7 +39,7 @@ iOS 禁止 JIT，Harmony 之类运行时打补丁的方案不可用。本项目�
 | **一键重开** | 暂停菜单加"Restart Room"，一键回到进房时的存档点 | [`QuickRestartPatch.cs`](src/STS2MobileIos/Patches/QuickRestartPatch.cs) |
 | **时光回溯 / 快照** | 暂停菜单 3 个存档位 + 3 个读档位，随时存读（自由 SL） | [`SnapshotPatch.cs`](src/STS2MobileIos/Patches/SnapshotPatch.cs) |
 | **选牌 AI 助手** | 奖励/事件/商店/升级界面按流派给候选卡评级+理由（只加标签，不改概率/数值） | [`CardAdvisorPatch.cs`](src/STS2MobileIos/Patches/CardAdvisorPatch.cs) |
-| **双端存档同步** | 电脑↔手机"最新者胜"自动同步，手机侧二次裁决防旧覆新 | [`sts2_save_sync.sh`](ios-export/sts2_save_sync.sh) + [`SyncImportPatch.cs`](src/STS2MobileIos/Patches/SyncImportPatch.cs) |
+| **存档传输与比较** | 清单校验、可恢复替换；定时写入需明确启用，见 [迁移说明](docs/SAVE_SYNC.md) | [`sts2_save_sync.sh`](ios-export/sts2_save_sync.sh) + [`SyncImportPatch.cs`](src/STS2MobileIos/Patches/SyncImportPatch.cs) |
 
 底层移植/稳定性补丁（触控、UI 缩放、移动布局、内存、着色器预热、生命周期等）见 [`docs/patch-catalog.md`](docs/patch-catalog.md)。
 

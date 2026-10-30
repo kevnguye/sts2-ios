@@ -39,7 +39,7 @@ Beyond just running the game, the port bundles these mobile-side enhancements (a
 | **One-tap restart** | Adds a "Restart Room" button to the pause menu — jump straight back to the room-entry save point | [`QuickRestartPatch.cs`](src/STS2MobileIos/Patches/QuickRestartPatch.cs) |
 | **Time-travel / snapshots** | 3 save slots + 3 load slots in the pause menu — save/load anytime (free SL) | [`SnapshotPatch.cs`](src/STS2MobileIos/Patches/SnapshotPatch.cs) |
 | **Card-pick AI advisor** | Grades candidate cards with a reason across reward/event/shop/upgrade screens by archetype (adds a label only — never touches odds/values) | [`CardAdvisorPatch.cs`](src/STS2MobileIos/Patches/CardAdvisorPatch.cs) |
-| **Two-way save sync** | "Newest wins" auto-sync between desktop and phone, with an on-device second check so stale data can't clobber fresh progress | [`sts2_save_sync.sh`](ios-export/sts2_save_sync.sh) + [`SyncImportPatch.cs`](src/STS2MobileIos/Patches/SyncImportPatch.cs) |
+| **Save transfer and comparison** | Manifest-verified transfers, recoverable profile replacement, and explicit opt-in before scheduled writes; [migration and limits](docs/SAVE_SYNC.md) | [`sts2_save_sync.sh`](ios-export/sts2_save_sync.sh) + [`SyncImportPatch.cs`](src/STS2MobileIos/Patches/SyncImportPatch.cs) |
 
 Lower-level porting/stability patches (touch, UI scaling, mobile layout, memory, shader warmup, lifecycle, …) are in [`docs/patch-catalog.md`](docs/patch-catalog.md).
 

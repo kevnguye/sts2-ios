@@ -22,8 +22,8 @@ namespace STS2MobileIos.Patches;
 // progression and run history).
 //   Save Slot N: copy user://default into slot_<N>/ (temp dir + swap, overwriting any
 //                previous contents of that slot). Other slots are untouched.
-//   Load Slot N: copy slot_<N>/ back over user://default (temp dir + atomic Move so the
-//                live save is never left half-restored), then reload through
+//   Load Slot N: copy slot_<N>/ back over user://default (recoverable rename with a
+//                retained previous tree), then reload through
 //                QuickRestartPatch.ReloadCurrentRunAsync (the game's own
 //                quit-to-menu -> Continue path, already proven on device).
 //
@@ -120,14 +120,7 @@ public static class SnapshotPatch
             Directory.CreateDirectory(SnapshotsRootPath());
             var dest = SlotPath(slot);
 
-            // Copy into a temp dir first, then swap into place, so a failure mid-copy
-            // never leaves a half-written slot that Load could pick up. Only this slot's
-            // folder is replaced; the other two slots are untouched.
-            var tmp = dest + ".writing";
-            if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
-            CopyDirectory(source, tmp);
-            if (Directory.Exists(dest)) Directory.Delete(dest, true);
-            Directory.Move(tmp, dest);
+            SaveDirectoryStore.Replace(source, dest);
 
             // Record the run's current floor at save time so the button can show it
             // (e.g. "存档位1 [第12层]"). Kept in a sibling meta file — never inside the
@@ -166,13 +159,7 @@ public static class SnapshotPatch
 
             var target = SaveRootPath();
 
-            // Rebuild the live save tree from the slot via a temp dir + swap, so the
-            // user's on-disk save is never left in a partially-restored state.
-            var tmp = target + ".restoring";
-            if (Directory.Exists(tmp)) Directory.Delete(tmp, true);
-            CopyDirectory(src, tmp);
-            if (Directory.Exists(target)) Directory.Delete(target, true);
-            Directory.Move(tmp, target);
+            SaveDirectoryStore.Replace(src, target);
 
             PatchHelper.Log($"[Snapshot] restored save tree from slot {slot}, reloading run");
 
@@ -202,6 +189,15 @@ public static class SnapshotPatch
             {
                 var dir = SlotPath(n);
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);
+                foreach (string suffix in new[] { ".previous", ".pending" })
+                {
+                    var leftover = dir + suffix;
+                    if (Directory.Exists(leftover))
+                    {
+                        SaveDirectoryStore.RejectLink(leftover);
+                        Directory.Delete(leftover, true);
+                    }
+                }
 
                 var writing = dir + ".writing";
                 if (Directory.Exists(writing)) Directory.Delete(writing, true);
@@ -318,15 +314,6 @@ public static class SnapshotPatch
             return int.TryParse(File.ReadAllText(meta).Trim(), out var f) ? f : (int?)null;
         }
         catch { return null; }
-    }
-
-    private static void CopyDirectory(string source, string dest)
-    {
-        Directory.CreateDirectory(dest);
-        foreach (var file in Directory.GetFiles(source))
-            File.Copy(file, Path.Combine(dest, Path.GetFileName(file)), overwrite: true);
-        foreach (var dir in Directory.GetDirectories(source))
-            CopyDirectory(dir, Path.Combine(dest, Path.GetFileName(dir)));
     }
 
     // ---- Node names & localized labels -----------------------------------------

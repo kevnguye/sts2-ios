@@ -1,89 +1,111 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Godot;
 
 namespace STS2MobileIos.Patches;
 
-// Newest-wins save sync, phone side. The Mac-side syncer (ios-export/sts2_save_sync.sh)
-// pushes the desktop save tree to user://sync_inbox/<unixts>/1/** whenever the desktop
-// copy is newer. At the earliest boot point (before any save is read) we compare that
-// timestamp against the LOCAL save tree's newest mtime and import only if the inbox
-// really is newer — the newest-wins rule is enforced on-device too, so a stale push can
-// never clobber fresher phone progress. The replaced tree is kept as a timestamped
-// backup (last 2 retained). Import is an atomic directory swap (same discipline as
-// SnapshotPatch): no partial states.
+// A transfer is eligible only after its manifest and completion marker arrive.
+// Validate every file before replacing profile 1; never replace other profiles.
 public static class SyncImportPatch
 {
+    public static long ValidateTransfer(string directory)
+        => ValidateTransfer(directory, out _);
+
+    private static long ValidateTransfer(string directory,
+        out System.Collections.Generic.Dictionary<string, string> expected)
+    {
+        SaveDirectoryStore.RejectLink(directory);
+        string manifestPath = Path.Combine(directory, "manifest.json");
+        string completePath = Path.Combine(directory, "complete");
+        SaveDirectoryStore.RejectLink(manifestPath);
+        SaveDirectoryStore.RejectLink(completePath);
+        if (new FileInfo(manifestPath).Length > 8 * 1024 * 1024)
+            throw new IOException("Manifest too large");
+        byte[] bytes = File.ReadAllBytes(manifestPath);
+        string hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        if (new FileInfo(completePath).Length > 128 || File.ReadAllText(completePath).Trim() != hash)
+            throw new IOException("Incomplete transfer");
+        using var json = JsonDocument.Parse(bytes);
+        var root = json.RootElement;
+        long timestamp = root.GetProperty("timestamp").GetInt64();
+        if (root.GetProperty("version").GetInt32() != 1 || timestamp <= 0 ||
+            timestamp > DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 300)
+            throw new IOException("Invalid transfer version or timestamp");
+        expected = new System.Collections.Generic.Dictionary<string, string>(StringComparer.Ordinal);
+        long newest = 0;
+        foreach (var file in root.GetProperty("files").EnumerateArray())
+        {
+            string path = file.GetProperty("path").GetString();
+            if (string.IsNullOrEmpty(path) || path.Contains('\\') || path.Contains(':') ||
+                path.Split('/').Any(p => p == "" || p == "." || p == ".."))
+                throw new IOException("Unsafe manifest path");
+            long size = file.GetProperty("size").GetInt64();
+            string digest = file.GetProperty("sha256").GetString();
+            if (size < 0 || digest == null || digest.Length != 64 ||
+                digest.Any(c => !"0123456789abcdef".Contains(c)))
+                throw new IOException("Invalid manifest entry");
+            expected.Add(path, size + ":" + digest);
+            if (!Path.GetFileName(path).StartsWith("sync_", StringComparison.Ordinal))
+                newest = Math.Max(newest, file.GetProperty("mtime").GetInt64());
+        }
+        if (timestamp != newest || !expected.TryGetValue("profile.save", out var profile) ||
+            profile.StartsWith("0:", StringComparison.Ordinal) ||
+            !SaveDirectoryStore.Same(expected, SaveDirectoryStore.Inventory(Path.Combine(directory, "1"))))
+            throw new IOException("Incomplete or modified save tree");
+        return timestamp;
+    }
+
     public static void TryImport()
     {
         try
         {
-            string root = OS.GetUserDataDir();                    // = Documents
+            string root = OS.GetUserDataDir();
+            SaveDirectoryStore.RecoverSaves(root);
             string inbox = Path.Combine(root, "sync_inbox");
             if (!Directory.Exists(inbox)) return;
-
-            // Pushes are timestamp-named subdirs; pick the newest, ignore strays.
-            var pushes = Directory.GetDirectories(inbox)
-                .Select(d => new { Dir = d, Ts = ParseTs(Path.GetFileName(d)) })
-                .Where(x => x.Ts > 0 && Directory.Exists(Path.Combine(x.Dir, "1")))
-                .OrderByDescending(x => x.Ts)
-                .ToList();
-            if (pushes.Count == 0) { Directory.Delete(inbox, true); return; }
-
-            var best = pushes[0];
-            string defaultDir = Path.Combine(root, "default");
-            long localNewest = NewestMtimeUnix(Path.Combine(defaultDir, "1"));
-
-            if (best.Ts <= localNewest)
+            SaveDirectoryStore.RejectLink(inbox);
+            string best = null;
+            long timestamp = 0;
+            foreach (string candidate in Directory.GetDirectories(inbox))
             {
-                // Phone progressed past this push — stale, drop it.
-                Log($"inbox stale (push {best.Ts} <= local {localNewest}), discarded");
-                Directory.Delete(inbox, true);
-                return;
+                try
+                {
+                    long value = ValidateTransfer(candidate);
+                    if (value > timestamp) { best = candidate; timestamp = value; }
+                }
+                catch (Exception e) { Log($"Transfer left untouched: {e.Message}"); }
             }
-
-            // Import: swap default aside as a backup, move the pushed tree in.
-            string backup = Path.Combine(root, $"sync_replaced_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
-            if (Directory.Exists(defaultDir))
-                Directory.Move(defaultDir, backup);
+            if (best == null) return; // Legacy/in-progress transfers are not deleted.
+            string defaultDir = Path.Combine(root, "default");
             Directory.CreateDirectory(defaultDir);
-            Directory.Move(Path.Combine(best.Dir, "1"), Path.Combine(defaultDir, "1"));
-            Directory.Delete(inbox, true);
-            PruneBackups(root, keep: 2);
-            Log($"imported desktop save (push {best.Ts} > local {localNewest}); old tree kept at {Path.GetFileName(backup)}");
+            SaveDirectoryStore.RejectLink(defaultDir);
+            string target = Path.Combine(defaultDir, "1");
+            long localNewest = NewestMtimeUnix(target);
+            if (timestamp <= localNewest) { Log("Stale transfer left untouched"); return; }
+            ValidateTransfer(best, out var expected);
+            SaveDirectoryStore.Replace(Path.Combine(best, "1"), target, expected);
+            Directory.Delete(best, true);
+            Log("Imported validated profile 1; previous profile retained in default/1.previous");
         }
-        catch (Exception e)
-        {
-            Log($"import failed: {e.Message}");
-        }
+        catch (Exception e) { Log($"Import failed: {e.Message}"); }
     }
 
-    private static long ParseTs(string name) => long.TryParse(name, out var v) ? v : 0;
-
-    private static long NewestMtimeUnix(string dir)
+    private static long NewestMtimeUnix(string directory)
     {
-        if (!Directory.Exists(dir)) return 0;
-        long newest = 0;
-        foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
-        {
-            var t = new DateTimeOffset(File.GetLastWriteTimeUtc(f)).ToUnixTimeSeconds();
-            if (t > newest) newest = t;
-        }
-        return newest;
+        if (!Directory.Exists(directory)) return 0;
+        var files = SaveDirectoryStore.Inventory(directory);
+        return files.Keys.Where(p => !Path.GetFileName(p).StartsWith("sync_", StringComparison.Ordinal))
+            .Select(p => new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(directory, p))).ToUnixTimeSeconds())
+            .DefaultIfEmpty(0).Max();
     }
 
-    private static void PruneBackups(string root, int keep)
+    private static void Log(string message)
     {
-        var backs = Directory.GetDirectories(root, "sync_replaced_*").OrderByDescending(d => d).ToList();
-        foreach (var d in backs.Skip(keep))
-            Directory.Delete(d, true);
-    }
-
-    private static void Log(string msg)
-    {
-        PatchHelper.Log($"[SyncImport] {msg}");
-        try { File.AppendAllText(Path.Combine(OS.GetUserDataDir(), "sync_log.txt"), $"[import] {msg}\n"); }
+        PatchHelper.Log($"[SyncImport] {message}");
+        try { File.AppendAllText(Path.Combine(OS.GetUserDataDir(), "sync_log.txt"), message + "\n"); }
         catch { }
     }
 }

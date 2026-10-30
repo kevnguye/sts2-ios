@@ -1,54 +1,68 @@
-# 存档迁移与双端同步
+# Save transfer and recovery / 存档传输与恢复
 
-移植完成后，你多半想把**电脑上已有的进度**搬到手机，之后两端随便玩、自动同步。本文档讲清：存档在哪、首次怎么迁、之后怎么自动同步，以及非 macOS（Windows/Linux）怎么做。
+This fork changes the transfer format. Update the phone patch and desktop scripts together. Old inbox folders without a manifest and completion marker are ignored and left untouched. Re-send with the updated `push-save.sh`; do not add a marker to an old or partially transferred folder.
 
-## 存档在两端的位置
+本分支采用新传输格式：手机补丁与电脑脚本必须一起更新。旧收件箱不会自动导入，也不会删除。请用新版脚本重新传输。
 
-| 端 | 路径 |
+## Locations
+
+| Data | Location |
 |---|---|
-| 电脑（macOS Steam） | `~/Library/Application Support/SlayTheSpire2/steam/<你的SteamID64>/` |
-| 手机（App 沙盒） | App 容器内 `Documents/default/1/`（内含 `profile.save` 等） |
+| Desktop Steam profile | `~/Library/Application Support/SlayTheSpire2/steam/<SteamID64>/` |
+| Phone active profile | App `Documents/default/1/` |
+| Phone previous profile | App `Documents/default/1.previous/` |
+| Phone import payload | `Documents/sync_inbox/<unique-transfer>/1/` |
+| Desktop retained phone candidates | `ios-export/.work/save_backups/phone_<fingerprint>/` |
 
-两者内容一一对应：电脑的 `steam/<SteamID>/` ↔ 手机的 `default/1/`。
+Import replaces only profile `1`. Other phone profiles remain in place. A previous profile is retained until the next replacement has finished staging. Snapshot restore still deliberately restores the whole snapshot save tree.
 
-## 一、首次迁移（电脑 → 手机）
+## Manual desktop-to-phone transfer
 
-手机全新装好、还没任何存档时，常规同步脚本会跳过（它要先能拉到手机存档比时间）。首次迁移用专用脚本：
+Close both games, back up valuable progress independently, configure your numeric Steam ID/device/bundle in ignored `ios-export/config.sh`, then run:
 
 ```bash
-# 前置：手机已装好 App、启动过一次（容器已建），config.sh 填好 STS2_STEAM_ID
 bash ios-export/push-save.sh
-# 然后【启动游戏】——SyncImportPatch 会把进度自动导入到 default/1
 ```
 
-原理：脚本把电脑存档推到手机 `Documents/sync_inbox/<版本>/1/**`，游戏启动时 [`SyncImportPatch`](../src/STS2MobileIos/Patches/SyncImportPatch.cs) 校验后**原子导入**到 `default/1`。手机没存档时任何推送都会被导入；手机若已有更新的进度，旧推送会被判为过期丢弃（最新者胜，见下）。导入前手机原树留时间戳备份（`sync_replaced_*`，保留最近 2 份）。
+The sender refuses missing/empty `profile.save` and symlinks. It compares file hashes, sizes, paths and modification times before and after staging, and writes `manifest.json` only after a stable copy. The payload upload must succeed before a separate completion marker is sent. On the next phone game start, the importer checks the manifest digest, every file's SHA-256 and size, and the exact file set. The transfer must be newer than the local profile. An incomplete or changed transfer is left untouched for retry/investigation.
 
-## 二、之后的双端自动同步
+Hashes establish transfer integrity, not who authored the saves. Only import your own trusted files. This is not full semantic validation of the game's proprietary save format. Modification times are a heuristic; clock skew and divergent progress can require manual conflict resolution.
+
+## Scheduled comparison is conservative by default
 
 ```bash
 bash ios-export/sts2_save_sync.sh
 ```
 
-「最新者胜」：比较两端存档树的最新修改时间——
+The script skips while the desktop game is running and requires two independent phone downloads to agree. Close the phone game too. Matching trees need no action; differing trees with similar timestamps produce a conflict and no replacement.
 
-- **手机新** → 备份电脑存档后，精确镜像到电脑（`rsync --delete`）
-- **电脑新** → 推送到手机收件箱，游戏下次启动由 `SyncImportPatch` 二次裁决后导入（手机端也执行最新者胜，旧的绝不覆盖新的）
-- 手机不可达/锁屏、电脑端游戏运行中 → 本轮静默跳过
+By default, a newer phone tree is retained as a candidate, and a newer desktop tree is reported without upload. No scheduled replacement occurs unless you explicitly set the corresponding value in `config.sh`:
 
-**挂成定时任务**（macOS，每 5 分钟自动同步）——用 launchd 或 cron 定期跑 `sts2_save_sync.sh` 即可。每次覆盖前都留时间戳备份于 `ios-export/.work/save_backups/`（自动保留最近 30 份）。
+```bash
+STS2_ALLOW_PHONE_PULL=1      # choose phone as authoritative when its mtime is newer
+STS2_ALLOW_DESKTOP_PUSH=1   # permit uploads when desktop mtime is newer
+```
 
-## 三、非 macOS（Windows / Linux）怎么做
+These switches opt into a timestamp policy, not a guarantee that the most progress wins. Leave them at `0` until you have reviewed the direction and recovery procedure. `push-save.sh` remains the deliberate manual send command. There is no automatic installation of launchd/cron jobs.
 
-`push-save.sh` / `sts2_save_sync.sh` 用的是 macOS 的 `xcrun devicectl`。在 Windows/Linux 上没有它，但**目标是一样的**：把电脑存档放进手机 App 容器的 `Documents/`。用跨平台工具做同一件事：
+Phone candidates are deduplicated by fingerprint and retained for manual review; they are not automatically pruned. Check disk usage before scheduling frequent runs. A process lock prevents overlapping senders. A force-killed sender can leave `.work/save_sync.lock`; after confirming no sender is active, remove that empty lock directory to resume.
 
-- **命令行**：[`pymobiledevice3`](https://github.com/doronz88/pymobiledevice3)（Python，Windows/macOS/Linux）——它能访问 App 沙盒文件（`afc` / house-arrest）。把电脑存档目录作为 `1/` 放进 `Documents/sync_inbox/<版本>/1/`（版本用任意递增数字即可，手机没存档时都会导入），然后启动游戏由 `SyncImportPatch` 导入。也可直接写入 `Documents/default/1/`（跳过收件箱，适合手机确无存档时的干净首装）。
-- **图形工具**：iMazing / 3uTools 等能浏览 App 的文档区，直接把存档拖进 `Documents/`（同上路径）。
+## Recoverable replacement, not an atomic directory exchange
 
-> 说明：本仓库暂只提供 macOS 的存档脚本；Windows/Linux 走上面的跨平台工具手动完成同一动作（欢迎 PR 补 Windows 脚本）。SideStore 签名的 App 是开发签名，`pymobiledevice3` 的沙盒文件访问对它可用。
+Phone imports, snapshots and desktop pulls copy and verify into a sibling `.pending` directory, retain the current directory as `.previous`, then rename the replacement into place. A caught commit failure restores the previous location. If the process stops between renames, startup recovery restores `.previous` when the active path is missing. There can be a brief gap between renames; this is not a single atomic exchange or a guarantee against power-loss/filesystem corruption.
 
-## 坑位
+On the phone, recovery runs at the earliest platform-initialization hook before normal save reads, including when no inbox exists. The desktop scripts recover an interrupted desktop replacement before reading it. Avoid running games or another file manager against saves during replacement. The game's own background writes are not controlled by these helpers; hash checks catch changes observed during staging, but are not a game-level save lock.
 
-- **bundle 要对**：SideStore 签名后 bundle 带团队后缀，`config.sh` 的 `STS2_BUNDLE_ID_SIGNED` 必须是手机上**实际已装**的 bundle，否则读写错容器。
-- **别 uninstall**：卸载会清空整个容器（存档 + pck 全没）。更新 App 一律覆盖装（`deploy-slim.sh`）。
-- **电脑端游戏运行时别同步**：正在写存档时同步可能读到半截；`sts2_save_sync.sh` 已自动检测并跳过。
-- **导入靠"启动游戏"触发**：推送后必须启动一次游戏，`SyncImportPatch` 才在最早启动点导入。
+Keep an independent backup before restoring snapshots or choosing a sync direction. The last `.previous` is only one generation and is replaced by a later transaction. Never uninstall the app to update it.
+
+## Windows/Linux manual staging
+
+Python 3.11+ can prepare the same payload on any platform:
+
+```bash
+python3 tools/save_manifest.py stage /path/to/desktop-save /path/to/new-transfer
+```
+
+Use a trusted device-file tool to place the contents of `new-transfer/` at `Documents/sync_inbox/<unique-transfer>/`. After the payload finishes copying, create a `complete` file containing the lowercase SHA-256 of `manifest.json` and copy it into that transfer directory last. Start the updated phone app to validate and import. Simply copying a `1/` folder or using an arbitrary large version number no longer enables import.
+
+Use `Documents/default/1.previous/` for manual recovery only with the game closed and after copying both active and previous trees to independent backup locations. Preserve the bundle identifier across app upgrades.

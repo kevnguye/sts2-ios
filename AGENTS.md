@@ -89,7 +89,7 @@ bash ios-export/push-pck.sh      # 把 build/StS2.pck 推到 App 的 Documents/S
 | 只改了补丁、游戏内容没动 | `bash ios-export/deploy-slim.sh`（换 dylib 重签，覆盖装，保留 pck+存档） |
 | 免插 Mac 永久续签 | SideStore + LocalDevVPN + iLoader 组合，手机后台自动重签（完整方法见 [`docs/RENEWAL.md`](docs/RENEWAL.md)） |
 | **首次把电脑进度迁到手机** | `bash ios-export/push-save.sh` 再启动游戏（手机没存档时也能导入；详见 [`docs/SAVE_SYNC.md`](docs/SAVE_SYNC.md)） |
-| 之后电脑↔手机自动同步 | `ios-export/sts2_save_sync.sh`（最新者胜；可挂 launchd 每 5 分钟） |
+| 之后比较电脑↔手机存档 | `ios-export/sts2_save_sync.sh`（默认不覆盖；定时写入需 config.sh 明确启用，见 docs/SAVE_SYNC.md） |
 
 ## 三大移植难题（已根治；遇到对应症状按此定位）
 
@@ -107,7 +107,7 @@ bash ios-export/push-pck.sh      # 把 build/StS2.pck 推到 App 的 Documents/S
 - **一键重开**（`QuickRestartPatch.cs`，暂停菜单 Restart Room）
 - **时光回溯/快照**（`SnapshotPatch.cs`，暂停菜单 3 存档位+3 读档位）
 - **选牌 AI 助手**（`CardAdvisorPatch.cs`，奖励/事件/商店/升级界面给候选卡评级+理由）
-- **双端存档同步**（`sts2_save_sync.sh` + `SyncImportPatch.cs`，最新者胜）
+- **存档传输与比较**（`sts2_save_sync.sh` + `SyncImportPatch.cs`；清单校验，默认不自动覆盖）
 
 完整表见 [README](README.md#移植带的增强功能)；底层稳定性补丁见 [`docs/patch-catalog.md`](docs/patch-catalog.md)。
 

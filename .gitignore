@@ -36,3 +36,7 @@ ios-export/.work/
 *.log
 *.pid
 save_backups/
+__pycache__/
+*.py[cod]
+# Local audit evidence and original source snapshot; not part of the fork.
+/security-review/
