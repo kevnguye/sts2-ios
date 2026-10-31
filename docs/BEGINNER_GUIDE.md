@@ -397,6 +397,11 @@ Before relying on the installation:
 - Use the game's normal save/quit/continue flow and verify progress returns.
 - In **Settings → General → Extras**, confirm Run Save Slots, Card Suggestions
   and Restart Room start off. Enable them only if you want those optional features.
+- For more room near the edges, try **Settings → Graphics → Horizontal Screen
+  Margin / Vertical Screen Margin**. They default to 0% and range up to 15% per
+  side; set both to 0% to restore the full frame. They do not disable iOS Home
+  gestures. Check card targeting after adjustment; physical-device verification
+  of these newer controls is still pending. See [audio/margin notes](AUDIO_SCREEN_MARGINS.md).
 
 The underlying game and patches can fail on paths not exercised by a successful
 launch. Initial loading/warmup can be slow, recurring hitches remain, and audio
