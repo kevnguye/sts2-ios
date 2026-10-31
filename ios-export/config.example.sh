@@ -1,43 +1,43 @@
-# STS2 iOS 移植 · 本地配置
+# STS2 iOS port: local configuration.
 # ─────────────────────────────────────────────────────────────
-# 用法: 复制本文件为 `config.sh`，填入你自己的值。
+# Usage: copy this file to config.sh and enter your own values.
 #   cp ios-export/config.example.sh ios-export/config.sh
-# config.sh 已被 .gitignore 忽略，不会进版本库——你的签名身份不会外泄。
-# build-ios.sh / deploy-slim.sh / sts2_save_sync.sh 启动时会自动 source 它。
+# config.sh is ignored by Git to keep signing details private.
+# build-ios.sh, deploy-slim.sh and sts2_save_sync.sh source it automatically.
 # ─────────────────────────────────────────────────────────────
 
-# ── Apple 签名身份（你自己的开发者账号，免费 Apple ID 即可）──
-# Team ID: Xcode → Settings → Accounts → 选账号 → 团队；或 developer.apple.com 会员信息。
+# Apple signing identity (your own developer account; free signing needs separate verification).
+# Team ID: Xcode -> Settings -> Accounts -> your account/team, or Apple Developer membership information.
 STS2_TEAM_ID="XXXXXXXXXX"
-# 你为这个 App 选的 bundle id（自定，建议用你自己的反向域名）。
+# Choose your own bundle ID, preferably using a reverse-domain name you control.
 STS2_BUNDLE_ID="com.yourname.sts2"
-# codesign 用的签名身份全名。列出可用身份: security find-identity -v -p codesigning
+# Full codesign identity name. List available identities with: security find-identity -v -p codesigning
 STS2_SIGN_IDENTITY="Apple Development: you@example.com (XXXXXXXXXX)"
-# 仅走 SideStore 自助续签时: SideStore 签名后 bundle 会带团队后缀(形如 ${STS2_BUNDLE_ID}.<SideStoreTeamID>)。
-# 只用 Xcode/USB 装机的话保持与 STS2_BUNDLE_ID 相同即可。存档同步脚本用它定位手机容器。
+# For SideStore only: signing may append a team suffix, such as ${STS2_BUNDLE_ID}.<SideStoreTeamID>.
+# For Xcode/USB installation, keep STS2_BUNDLE_ID. Save-sync scripts use this to locate the app container.
 STS2_BUNDLE_ID_SIGNED="${STS2_BUNDLE_ID}"
 
-# ── 目标设备 ──
-# 你的 iPhone 的 UDID。列出已连接设备: xcrun devicectl list devices
+# Target device.
+# Your iPhone UDID. List connected devices with: xcrun devicectl list devices
 STS2_DEVICE_UDID=""
 
-# ── 本机路径 ──
-# 游戏安装目录(到 .../Contents/Resources)。下面是 Steam 默认 macOS 路径，按需改。
+# Local paths.
+# Game Contents/Resources directory. Adjust this default macOS Steam path as needed.
 STS2_GAME_APP="$HOME/Library/Application Support/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.app/Contents/Resources"
-# Godot 4.5.1 mono 版可执行文件路径。
+# Path to the Godot 4.5.1 mono executable.
 STS2_GODOT_BIN="$HOME/Godot_mono.app/Contents/MacOS/Godot"
-# .NET 9 SDK 安装目录（默认 ~/.dotnet；若用 Homebrew 等装在别处，改成实际路径，如 /usr/local/share/dotnet）。
+# .NET 9 SDK directory; adjust ~/.dotnet if installed elsewhere, such as /usr/local/share/dotnet.
 STS2_DOTNET_ROOT="$HOME/.dotnet"
 
-# ── 第三方 iOS 库（官方地址+确切版本见 docs/THIRD_PARTY_LIBS.md；本仓库不转发）──
-# 目录里需含: libspine_godot.ios.template_release.framework   (Spine 4.2 / Godot 4.5.1)
+# Third-party iOS libraries: official sources/versions are in docs/THIRD_PARTY_LIBS.md; no binaries are supplied here.
+# Must contain libspine_godot.ios.template_release.framework (Spine 4.2 / Godot 4.5.1).
 #            libGodotFmod.ios.template_release.xcframework    (FMOD 2.03 / Godot 4.5.1)
 STS2_IOS_LIBS_DIR="$HOME/sts2-ios-userlibs/ios-libs"
-# FMOD iOS 静态库目录，需含: libfmod_iphoneos.a  libfmodstudio_iphoneos.a
+# FMOD iOS static libraries: libfmod_iphoneos.a and libfmodstudio_iphoneos.a.
 STS2_FMOD_STATIC_DIR="$HOME/sts2-ios-userlibs/fmod-ios/lib"
 
-# ── 存档同步（可选，仅 sts2_save_sync.sh 用）──
-# 你的 SteamID64（电脑存档目录名）。查询: 游戏内或 steamid.io。
+# Optional save synchronization, used by sts2_save_sync.sh only.
+# Your SteamID64 (desktop save-directory name); find it in Steam/game account information or steamid.io.
 STS2_STEAM_ID=""
 # Divergent phone saves are retained as candidates by default, never mirrored with --delete.
 # Set to 1 only after reviewing the candidate and choosing the phone as authoritative.

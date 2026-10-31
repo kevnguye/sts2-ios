@@ -1,14 +1,15 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>杀戮尖塔2 iOS 原生移植技术记录</title>
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Slay the Spire 2: Native iOS Port - Technical Record</title>
 <style>
 @page{size:A4;margin:18mm 16mm 16mm;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:"PingFang SC","Hiragino Sans GB",sans-serif;color:#23272e;font-size:10.5pt;line-height:1.7;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;color:#23272e;font-size:10.5pt;line-height:1.7;}
 h1,h2,h3{line-height:1.3;}
 .cover{height:245mm;display:flex;flex-direction:column;justify-content:center;
   background:radial-gradient(ellipse at 50% 30%,#3a2438,#1a1220 70%,#0d0912);
   color:#f4ead6;text-align:center;padding:0 20mm;page-break-after:always;border-radius:6px;}
 .cover .tag{color:#e8a33d;font-weight:800;font-size:13pt;letter-spacing:3px;margin-bottom:18px;}
-.cover h1{font-size:38pt;font-weight:900;letter-spacing:1px;}
+.cover h1{font-size:34pt;font-weight:900;letter-spacing:1px;}
 .cover h1 em{color:#e8a33d;font-style:normal;}
 .cover .st{margin-top:22px;font-size:15pt;color:#c0ae90;font-weight:600;}
 .cover .meta{margin-top:60px;font-size:11pt;color:#8a7a64;line-height:2;}
@@ -39,139 +40,114 @@ tr:nth-child(even) td{background:#faf6ee;}
   padding:2px 10px;border-radius:100px;margin-right:6px;}
 .foot{text-align:center;color:#aaa;font-size:8.5pt;margin-top:30px;border-top:1px solid #eee;padding-top:12px;}
 </style></head><body>
-
 <div class="cover">
-  <div class="tag">全球首个 · 原生移植技术记录</div>
-  <h1>《杀戮尖塔 2》<br><em>iOS 原生移植</em></h1>
-  <div class="st">Slay the Spire 2 · Native iOS Port</div>
-  <div class="st" style="font-size:11pt;margin-top:10px;">真原生运行 · 非串流 · 非模拟器</div>
-  <div class="meta">技术方案 · 踩坑实录 · 复现指南<br>2026 年 7 月</div>
-  <div class="warn">仅供技术研究。需使用者自己拥有 Steam 正版，用其正版游戏文件在自有设备上运行，不涉及盗版分发。</div>
+<div class="tag">HISTORICAL TECHNICAL RECORD</div>
+<h1>Slay the Spire 2<br><em>Native iOS Port</em></h1>
+<div class="st">Native execution - no streaming or emulation</div>
+<div class="meta">Architecture, debugging notes and reproduction outline<br>July 2026 - English translation</div>
+<div class="warn">Personal technical research. Use your own purchased Steam game files on your own device. No game content is distributed here.</div>
 </div>
-
-<h2>一、TL;DR：做成了什么</h2>
-<div class="lead">把 PC 上的《杀戮尖塔 2》（Godot 引擎 + C#）编译成 iPhone 原生 App，真机流畅运行、存档与电脑互通，并额外实现了一个连 Steam Mod 都无法上手机的「一键重开本房间」功能。核心难点是绕过 iOS「禁止运行时生成代码」的限制，以及突破单应用内存上限。</div>
+<div class="box"><div class="bt">Translation and current-status note</div>
+<p>This is a translation of the original author's technical record. Its claims about being first, smooth performance, audio, free signing and memory budgets are historical reports, not new verification by this fork. Some procedures and counts are outdated. Current instructions and limitations are in docs/BEGINNER_GUIDE.md and docs/IOS_PERFORMANCE.md. This fork uses normal 1x timing, defaults Extras off, still has recurring hitches and has not verified free-account signing. Preserve backups; do not replace an app container merely to transfer saves.</p></div>
+<h2>1. Overview: what the original project achieved</h2>
+<div class="lead">The author compiled the PC version of Slay the Spire 2 (Godot + C#) into a native iPhone app, reported smooth device operation and desktop/phone save transfer, and added Restart Room without relying on Steam mods. The principal challenges were the supported iOS runtime's lack of runtime code generation and the app's memory limit.</div>
 <table>
-<tr><th>能力</th><th>状态</th><th>关键手段</th></tr>
-<tr><td>iPhone 原生运行游戏</td><td>✅</td><td>官方 Godot 4.5.1 引擎 + NativeAOT 预编译游戏程序集</td></tr>
-<tr><td>手机适配补丁（触屏/UI/生命周期）</td><td>✅</td><td>Mono.Cecil 静态 IL 织入（替代 Harmony 运行时补丁）</td></tr>
-<tr><td>音频(FMOD)/动画(Spine)</td><td>✅</td><td>自行编译两个 GDExtension 的 iOS 版</td></tr>
-<tr><td>存档电脑↔手机互通</td><td>✅</td><td>Steam 存档 → Xcode 容器替换</td></tr>
-<tr><td>流畅无卡顿</td><td>✅</td><td>着色器预热 + 突破内存上限</td></tr>
-<tr><td>独家：一键重开本房间</td><td>✅</td><td>暂停菜单注入按钮 + 复用游戏原生重载逻辑</td></tr>
+<tr><th>Capability</th><th>Original reported status</th><th>Approach</th></tr>
+<tr><td>Native iPhone execution</td><td>Working</td><td>Official Godot 4.5.1 engine and NativeAOT game assembly</td></tr>
+<tr><td>Touch, UI and lifecycle patches</td><td>Working</td><td>Mono.Cecil static IL weaving replaces runtime Harmony patches</td></tr>
+<tr><td>FMOD audio and Spine animation</td><td>Working</td><td>Locally compiled iOS GDExtensions</td></tr>
+<tr><td>Desktop/phone save transfer</td><td>Working</td><td>Steam saves and Xcode container operations; use the current safer save-transfer guide</td></tr>
+<tr><td>Stall-free performance</td><td>Claimed by the original author</td><td>Shader warmup and increased memory; recurring hitches remain in the current fork</td></tr>
+<tr><td>Restart Room</td><td>Working</td><td>Pause-menu button plus native reload logic</td></tr>
 </table>
-
-<h2>二、为什么这个游戏能移植</h2>
-<p>并非所有 PC 游戏都能上手机，这一个能，靠三个前提：</p>
+<h2>2. Why this game could be ported</h2>
+<p>The original analysis relied on three conditions:</p>
 <ul>
-<li><strong>引擎选对了</strong>：尖塔2 从 Unity 换成了开源的 <strong>Godot 引擎</strong>（4.5.1），Godot 官方支持导出 iOS，给移植留了口子。</li>
-<li><strong>数据包未加密</strong>：游戏资源包（<code>.pck</code>）是标准 GDPC 格式、未加密，可解析、可重打包。</li>
-<li><strong>有安卓先例参考</strong>：社区已有非官方安卓启动器，其手机适配补丁（触屏、UI 缩放）逻辑可移植——但它用的运行时改代码方式在 iOS 行不通，需换实现。</li>
+<li><strong>Engine support:</strong> Slay the Spire 2 uses the open-source Godot 4.5.1 engine, which supports iOS export. The original text contrasted this with the earlier game's Unity engine.</li>
+<li><strong>Readable content pack:</strong> its .pck uses the standard, unencrypted GDPC format and can be parsed and repacked.</li>
+<li><strong>Android precedent:</strong> an unofficial community launcher already supplied touch/UI-scale logic. Its runtime patch mechanism had to be replaced for iOS.</li>
 </ul>
-
-<h2 class="sec">三、核心技术方案</h2>
-
-<h3>1. 绕过 iOS 的 JIT 禁令 —— 静态 IL 织入</h3>
-<p>安卓版靠 <span class="pill">Harmony</span> 在运行时动态给游戏打补丁。但 iOS <strong>禁止程序运行时生成/修改机器码</strong>（无 JIT），Harmony 直接不可用。</p>
-<p>解法：写一个基于 <strong>Mono.Cecil</strong> 的「织入器」，在编译阶段把补丁的 prefix/postfix 钩子<strong>静态焊进</strong>游戏主程序集 <code>sts2.dll</code>——运行时不再需要任何动态改代码。安卓的 16 个补丁里，除 1 个纯调试日志（弃用）外全部改写为静态织入。</p>
-<pre><span class="c"># 织入：把补丁钩子焊进游戏 dll</span>
-STS2Weaver  sts2.dll  补丁库.dll  manifest.json  →  织入版 sts2.dll
-<span class="c"># manifest 每条 = 目标类.方法 + prefix/postfix + 钩子</span></pre>
-
-<h3>2. 用苹果预编译器把游戏编成原生库 —— NativeAOT</h3>
-<p>iOS 上 Godot 的 C# 只有一条路：<strong>NativeAOT</strong>（提前编译，把整个游戏 + .NET 运行时编成一个原生 <code>.dylib</code>）。我们没有游戏源码，只有编译好的 <code>sts2.dll</code>，于是用一个「空壳工程」——不含源码，在预编译器读取前用织入版 dll 覆盖中间产物，让它把我们的版本编成原生库。</p>
-<div class="box ok"><div class="bt">✓ 最大风险点已排除</div>游戏靠「反射」注册 1624 个卡牌/怪物类型，反射与预编译天生冲突（很多 C# 游戏移植 iOS 死在这）。实测编译通过、运行正常。</div>
-
-<h3>3. 音频与动画插件的 iOS 版</h3>
-<p>游戏依赖 FMOD（音频）和 Spine（动画）两个 GDExtension，官方数据包里只有桌面版库。我们按游戏所用版本（FMOD 2.03.14、Spine 4.2）自行编译出 iOS arm64 版，入口符号与游戏要求逐一核对匹配。</p>
-
-<h3>4. 数据包的两处手术</h3>
-<p>MegaCrit 私有引擎打的 <code>.pck</code> 与官方引擎的机制有两处冲突，必须改：</p>
+<h2 class="sec">3. Core architecture</h2>
+<h3>3.1 Static IL weaving for a runtime without JIT</h3>
+<p>The Android approach patched the game dynamically with Harmony. The supported iOS NativeAOT route cannot generate or replace machine code at runtime, so that mechanism is unavailable.</p>
+<p>A Mono.Cecil weaver inserts prefix/postfix calls into a private copy of sts2.dll before native compilation. The original report said that 15 of 16 Android patches were adapted, excluding one debugging-only patch.</p>
+<pre># Weave patch hooks into the private game DLL
+STS2Weaver sts2.dll hooks.dll manifest.json woven-sts2.dll
+# Each manifest entry identifies a target method, prefix/postfix kind and hook.</pre>
+<h3>3.2 NativeAOT: compiling the game into a native library</h3>
+<p>Godot's supported C# iOS pipeline uses NativeAOT, compiling the game and required .NET runtime code into a dylib. With no game source available, an empty driver project creates a placeholder assembly, then replaces it with the woven DLL before ILC reads it.</p>
+<div class="box ok"><div class="bt">Original reflection test</div><p>The game registers 1,624 card/creature types through reflection. Reflection and trimming are a major risk for AOT ports. The original author reported successful compilation and runtime operation; this does not eliminate the need to investigate warnings and test all relevant paths.</p></div>
+<h3>3.3 Native audio and animation extensions</h3>
+<p>The game uses FMOD and Spine GDExtensions; the owned desktop package contains desktop libraries. The original build compiled iOS arm64 counterparts matching FMOD 2.03.14 and Spine 4.2, then checked initializer symbols. The current pinned recipe separately records the versions actually tested by this fork.</p>
+<h3>3.4 Two content-pack adjustments</h3>
 <ul>
-<li><strong>移除 Sentry</strong>：崩溃上报插件无 iOS 版，启动加载即崩，从包内移除。</li>
-<li><strong>补 672 个脚本占位</strong>：场景用路径引用 C# 脚本（<code>res://….cs</code>），但包内 0 个 .cs 文件——官方引擎按路径找不到就崩。补上占位文件后，引擎经脚本属性映射到预编译类型即可。</li>
+<li><strong>Disable Sentry:</strong> the original package has no matching iOS extension in this route, so remove its extension registration and disable its autoload in the private pack.</li>
+<li><strong>Add C# resource placeholders:</strong> the original report needed 672 .cs paths absent from the pack. The official engine then resolves scene script resources to precompiled types. Counts vary with game versions.</li>
 </ul>
-
-<h2 class="sec">四、踩坑实录（精选）</h2>
-<p>真机首次运行是一场「层层剥壳」，每个报错都靠日志/崩溃报告定位根因，而非猜测。</p>
+<h2 class="sec">4. Debugging record</h2>
+<p>The original author used device logs and crash reports to investigate each startup failure.</p>
 <table>
-<tr><th>现象</th><th>根因</th><th>解法</th></tr>
-<tr><td>编译期 IntPtr 重复定义</td><td>误把游戏自带的整套 .NET 运行时库当依赖，与预编译器自带的撞车</td><td>以框架实际安装目录为准，精确滤除框架库</td></tr>
-<tr><td>预编译器拒载 Steamworks 某类型</td><td>一个 C 联合体结构（引用与数字叠在同一内存），严格模式不接受</td><td>不强制加载全部依赖，让裁剪丢弃不可达类型</td></tr>
-<tr><td>卡在 logo：hostfxr 加载失败</td><td>游戏主库没被做成 framework 嵌入 app</td><td>从预编译产物造 framework 放入 app</td></tr>
-<tr><td>致命错误弹窗（图集加载）</td><td>预编译默认禁用反射式 JSON 解析</td><td>csproj 开启 <code>JsonSerializerIsReflectionEnabledByDefault</code></td></tr>
-<tr><td>加载场景脚本崩溃</td><td>包内缺 .cs 脚本资源（见上）</td><td>补 672 个占位脚本</td></tr>
-<tr><td>FMOD 初始化调空地址崩</td><td>静态链接缺 <code>load_all_fmod_plugins</code> 符号</td><td>注入零插件空实现</td></tr>
-<tr><td>ModelDb 初始化卡死</td><td>为绕桌面 bug 写的反射补丁在预编译下卡住——但该 bug 在 iOS 根本不存在</td><td>移除该补丁，用游戏原版逻辑（更干净）</td></tr>
+<tr><th>Symptom</th><th>Cause identified in the original test</th><th>Resolution</th></tr>
+<tr><td>Duplicate IntPtr definition at compile time</td><td>Copied the game's bundled .NET runtime assemblies alongside the compiler's runtime pack</td><td>Exclude framework libraries using the installed runtime's actual file list</td></tr>
+<tr><td>ILC rejects a Steamworks type</td><td>Explicit-layout union overlapping references and numbers</td><td>Avoid rooting every dependency; allow unreachable desktop-only types to be trimmed</td></tr>
+<tr><td>Logo hang / hostfxr loading failure</td><td>Main native library not embedded as an app framework</td><td>Package/embed the AOT output as the expected framework</td></tr>
+<tr><td>Fatal atlas-loading error</td><td>Reflection-based JSON disabled by AOT defaults</td><td>Enable JsonSerializerIsReflectionEnabledByDefault</td></tr>
+<tr><td>Scene script-loading crash</td><td>Missing .cs resource paths</td><td>Add placeholders; the original count was 672</td></tr>
+<tr><td>FMOD calls a null initializer</td><td>Missing load_all_fmod_plugins symbol in the static route</td><td>Add an empty custom-plugin loader</td></tr>
+<tr><td>ModelDb initialization hang</td><td>Reflection workaround for a desktop issue hung under AOT; that issue was absent on iOS</td><td>Remove the workaround and retain the game's original logic</td></tr>
 </table>
-
-<div class="box"><div class="bt">⚠ 最硬的一关：三个毛病、同一个根</div>
-「保存并退出闪退」「着色器预热崩」「偶尔卡顿」看似三个问题，从系统的 <code>JetsamEvent</code> 日志（<code>largestProcess: StS2, reason: per-process-limit</code>）确认<strong>同一个根因：游戏内存超过 iOS 单应用上限被系统强杀</strong>。一个内存权限 <code>increased-memory-limit</code>（把上限提到设备内存的 ~75%）同时治好三者。该权限免费账号可用，但需经 Xcode 生成含此权限的配置文件才能签入。</div>
-
-<h2 class="sec">五、独家功能：一键重开本房间</h2>
-<p>对应 Steam Mod「Quick Restart 2」，但 Mod 依赖游戏的 Mod 加载器 + 运行时改代码 + 创意工坊订阅，全部上不了手机。功能本身很简单，直接原生重写：</p>
+<div class="box"><div class="bt">Three symptoms attributed to one memory problem</div><p>The original report grouped Save and Quit crashes, shader-warmup crashes and some stutters under per-process memory termination, citing JetsamEvent with largestProcess: StS2 and reason: per-process-limit. It reported improvement with increased-memory-limit and estimated a limit near 75% of device RAM. Memory availability varies by device/state; this is not a guaranteed allocation or proof that every stall is fixed. The original free-account claim has not been reproduced by this fork; the actual signed profile must support the entitlement.</p></div>
+<h2 class="sec">5. Restart Room</h2>
+<p>The feature resembled the Steam mod Quick Restart 2, but was implemented directly because its mod-loader/runtime-patching/workshop dependencies did not transfer to this iOS route.</p>
 <ul>
-<li><strong>加按钮</strong>：静态织入 hook 暂停菜单初始化，复制现有「保存并退出」按钮（样式布局自动一致），改名「重开本房间」，放在「继续」下方。</li>
-<li><strong>重载逻辑</strong>：复用游戏自己的「退主菜单→继续」路径，但<strong>不存档</strong>——磁盘上进房间时的存档原封不动，于是等效「撤销这一房间的操作、重来」。全程黑屏过渡，不闪主菜单。</li>
+<li><strong>Button:</strong> statically hook pause-menu initialization, duplicate Save and Quit to retain native styling/layout, relabel it Restart Room, and place it below Continue.</li>
+<li><strong>Reload:</strong> reuse the return-to-menu/continue path without saving. The existing room-entry autosave remains unchanged, effectively undoing the room's later actions. A black transition hides the intermediate menu.</li>
 </ul>
-
-<h2>六、着色器预热（消除卡顿）</h2>
-<p>Godot 手机端通病：首次遇到新画面时现场编译着色器，卡一下。移植安卓版的预热逻辑（首次启动把所有材质在隐藏视口渲染一遍、全部编译并缓存、写完成标记），之后每次启动跳过、全程流畅。注意：预热额外吃内存，必须在内存权限到位后才不会 OOM。</p>
-
-<h2 class="sec">七、复现与维护</h2>
-<div class="box"><div class="bt">⚠ 前置声明：本章是命令级流程，但不是零起点脚本</div>
-真正跑通还依赖本项目自研的源码资产：<strong>Cecil 织入器（STS2Weaver）、11+ 个移植补丁、pck 处理工具、导出工程配置（build-ios.sh 等）</strong>。这些不在本文档内。下述命令用于说明每一步在做什么、参数与版本，照抄命令本身不足以复现——需连同上述源码一起获取。</div>
-
-<h3>7.1 环境与版本锁定（版本错配是主要坑源）</h3>
+<h2>6. Shader warmup</h2>
+<p>The original approach rendered materials in a hidden viewport on first launch to compile/cache shaders, then wrote a completion marker to skip later warmups. It aimed to reduce first-use compilation stalls. Warmup consumes additional memory; it does not prove every future effect is cached or prevent all recurring frame hitches.</p>
+<h2 class="sec">7. Reproduction and maintenance</h2>
+<div class="box"><div class="bt">These are explanatory commands, not a complete setup script</div><p>The process also requires STS2Weaver, the mobile patches, pack tools and export configuration supplied by the repository. The commands illustrate stages and parameters; copying them without the source/configuration is insufficient. Use the current beginner guide and build script for installation.</p></div>
+<h3>7.1 Original version requirements</h3>
 <table>
-<tr><th>组件</th><th>版本</th><th>说明</th></tr>
-<tr><td>Godot（mono 版）</td><td><strong>4.5.1-stable</strong></td><td>必须与游戏所用引擎版本完全一致</td></tr>
-<tr><td>.NET SDK</td><td>9.0.x</td><td>游戏 TFM 为 net9.0；含 ILCompiler 9.0.x</td></tr>
-<tr><td>FMOD Engine</td><td>2.03.14 (iOS)</td><td>与游戏内 bank 格式匹配；需登录 fmod.com 下载</td></tr>
-<tr><td>Spine Runtimes</td><td>4.2 分支</td><td>与游戏 .spskel 版本匹配</td></tr>
-<tr><td>Xcode / iOS SDK</td><td>Xcode 26.x</td><td>提供 NativeAOT 交叉编译的 clang/链接器</td></tr>
+<tr><th>Component</th><th>Original version</th><th>Notes</th></tr>
+<tr><td>Godot mono</td><td>4.5.1-stable</td><td>Match the required engine/export templates</td></tr>
+<tr><td>.NET SDK</td><td>9.0.x</td><td>Game TFM net9.0 and compatible ILCompiler</td></tr>
+<tr><td>FMOD Engine</td><td>2.03.14 iOS</td><td>Compatible bank format; obtain from FMOD yourself</td></tr>
+<tr><td>Spine runtimes</td><td>4.2 branch</td><td>Match the game's .spskel data version</td></tr>
+<tr><td>Xcode / iOS SDK</td><td>Xcode 26.x</td><td>NativeAOT cross-compiler/linker and SDK</td></tr>
 </table>
-
-<h3>7.2 前提</h3>
-<ul><li>自有 Steam 正版《杀戮尖塔 2》（用其 macOS 版游戏文件，不涉及盗版）</li>
-<li>一台 Mac + Xcode + 一部 iPhone + 一个 Apple ID（免费即可）</li>
-<li>工具链：<code>brew install scons xcodegen ios-deploy libimobiledevice</code>；.NET SDK 从 dot.net 装</li></ul>
-
-<h3>7.3 分步流程（build-ios.sh 内部逻辑）</h3>
-<pre><span class="c"># ① 编译补丁库 + 静态织入到游戏 dll</span>
+<h3>7.2 Prerequisites</h3>
+<ul><li>Your purchased macOS Steam game files.</li><li>A Mac, Xcode, iPhone and your own Apple Account. Free-account signing remains unverified by this fork.</li><li>The original tool list used brew install scons xcodegen ios-deploy libimobiledevice, plus a .NET SDK from Microsoft. Use the current guide's actual prerequisites instead of assuming every historical tool is required.</li></ul>
+<h3>7.3 Build stages</h3>
+<pre># 1. Compile patches and statically weave into a private game DLL.
 dotnet build src/STS2MobileIos -c Release -o /tmp/patch
 dotnet run --project src/STS2Weaver -c Release -- \
   game-refs/sts2.dll /tmp/patch/STS2MobileIos.dll \
   src/STS2MobileIos/manifest.json /tmp/sts2-woven.dll
-<span class="c"># ② 组装依赖(以 .NET 共享框架目录为准滤除框架库,只留第三方) → prebuilt/</span>
-<span class="c"># ③ 编译 GDExtension: FMOD + Spine 的 iOS arm64 版</span>
-scons platform=ios arch=arm64 target=template_release fmod_lib_dir=... <span class="c"># FMOD</span>
-./build-extension.sh ios arm64 <span class="c"># Spine(先 setup-extension.sh 4.5.1-stable)</span>
-<span class="c"># ④ NativeAOT: 预编译织入版游戏 → 原生 dylib(~75MB arm64)</span>
+# 2. Assemble third-party managed dependencies in prebuilt/;
+#    exclude framework libraries using the installed runtime list.
+# 3. Compile the iOS arm64 FMOD and Spine extensions.
+scons platform=ios arch=arm64 target=template_release fmod_lib_dir=...
+./build-extension.sh ios arm64 # Original Spine example; setup first.
+# 4. NativeAOT: woven game -> native dylib (~75MB in the original build).
 dotnet publish ios-export/sts2.csproj -c ExportRelease -r ios-arm64 \
   -p:GodotTargetPlatform=ios --self-contained
-<span class="c"># ⑤ Godot 导出 Xcode 工程 + 数据包三连(移 sentry + 补 672 脚本占位)</span>
-<span class="c"># ⑥ dummy.cpp 注入 FMOD 空实现 load_all_fmod_plugins</span></pre>
-
-<h3>7.4 签名装机（免费账号关键：内存权限只能经 Xcode 签入）</h3>
-<pre><span class="c"># 首次 / 加内存权限: 必须 Xcode GUI(命令行 xcodebuild 报 No Accounts)</span>
-<span class="c"># Xcode 打开 build/StS2.xcodeproj → Signing&Capabilities</span>
-<span class="c">#   → Team 选自己 → +Capability → Increased Memory Limit → Run</span>
-<span class="c"># 此步让 Apple 生成含该权限的 provisioning profile 并装机</span>
-
-<span class="c"># 之后增量(仅换补丁 dylib): 命令行即可(profile 已含权限)</span>
+# 5. Export Xcode and prepare the pack: disable Sentry, add placeholders.
+# 6. Add the empty load_all_fmod_plugins loader to generated dummy.cpp.</pre>
+<h3>7.4 Signing and installing</h3>
+<p>The original author provisioned Increased Memory Limit through Xcode's Signing &amp; Capabilities and reported command-line account-visibility problems. This is an observation about that setup, not a universal ban on command-line signing. Select your own Team, confirm the capability/profile and build for your iPhone. Subsequent incremental signing still needs the correct profile and identity.</p>
+<pre># Initial Xcode setup:
+# Open build/StS2.xcodeproj -> Signing &amp; Capabilities
+# Select your Team -> Increased Memory Limit -> Run
+# Later incremental example (sign frameworks too):
 cp publish/sts2.dylib "$APP/Frameworks/sts2.framework/sts2"
-codesign -f -s "Apple Development: 你的账号" --generate-entitlement-der \
-  --entitlements ent_mem.plist "$APP"   <span class="c"># ent 含 increased-memory-limit</span>
-xcrun devicectl device install app --device &lt;UDID&gt; "$APP"  <span class="c"># 覆盖,勿卸载</span></pre>
-<div class="box"><div class="bt">⚠ 三条铁律</div>
-<ul style="margin:4px 0 0 18px;">
-<li><strong>覆盖安装，绝不卸载重装</strong>——卸载会清空存档。</li>
-<li>免费签名 <strong>7 天失效</strong>，Xcode 重新 Run 一次即可续签，存档不受影响。</li>
-<li>游戏更新后需重跑构建（着色器缓存会重置，首次启动重新预热一次）。</li>
-</ul></div>
-<h3>存档迁移</h3>
-<p>电脑 Steam 存档位于 <code>userdata/&lt;id&gt;/2868840/remote/</code>；用 Xcode「Devices and Simulators → Download/Replace Container」把存档合并进手机 app 的 <code>Documents/default/1/</code> 即可。</p>
-
-<div class="foot">本文档为个人技术研究记录，与 Mega Crit / MegaCrit 官方无关。《Slay the Spire 2》版权归原作者所有。</div>
+codesign -f -s "Apple Development: YOUR_ACCOUNT" \
+  --generate-entitlement-der --entitlements ent_mem.plist "$APP"
+xcrun devicectl device install app --device &lt;UDID&gt; "$APP"
+# Install over the existing same-bundle app; never uninstall to update.</pre>
+<div class="box"><div class="bt">Three maintenance rules</div>
+<ul><li>Install over the same app. Uninstalling deletes its local saves.</li><li>Free Personal Team signing normally expires after 7 days; renew through Xcode using the same identity/bundle. Other profiles can differ.</li><li>Rebuild after game updates. The original note expected shader-cache reset and another first-start warmup; verify actual cache behavior for your build.</li></ul></div>
+<h3>Save transfer</h3>
+<p>The original report located Steam saves under userdata/&lt;id&gt;/2868840/remote/ and described Xcode container operations into Documents/default/1/. Do not blindly replace the current app container: use docs/SAVE_SYNC.md, independently back up both sides, and use the validated transfer/recovery scripts.</p>
+<div class="foot">Personal technical research, unaffiliated with Mega Crit / MegaCrit. Slay the Spire 2 and its content belong to their respective rights holders.</div>
 </body></html>

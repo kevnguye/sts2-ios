@@ -2,35 +2,35 @@ using System.Collections.Generic;
 
 namespace STS2MobileIos.Patches;
 
-// 事件选项级推演数据 — 逐事件的选项顺序与每选项收益。
-// 2026-07-14 按 experiments/research/event_sim_and_table_audit.md 全量修复:
-//   A级: 19 个事件选项顺序重排为与源码 GenerateInitialOptions 下标严格一致(下标对齐路径靠此正确);
-//   全表补 Key(源码 TextKey "EVID.pages.PAGE.options.KEY" 的 KEY 段, 按名匹配自动兼容 LOCKED 变体);
-//   B级: 数值/缺选项/语义逐条落实; C级: 补 THE_ARCHITECT。
-// 豁免: NEOW 不入表 — 起始事件走专门 live 逻辑(随机2正面遗物+1诅咒系, Key=遗物id动态, Neow.GenerateInitialOptions L214-278)。
-// 把"事件里选哪个"作为决策点: 按当前状态(金钱/卡组/上限)评估每个选项, 状态变化入推演。
+// Event-option simulation data: option order and estimated rewards for each event.
+// 2026-07-14 audit corrections, originally recorded in experiments/research/event_sim_and_table_audit.md:
+// Grade A: reorder 19 events to match GenerateInitialOptions indices exactly; index-based fallback depends on this.
+// Add Key throughout: the KEY suffix of EVID.pages.PAGE.options.KEY, with name matching compatible with LOCKED variants.
+// Grade B: correct values, missing options and semantics; grade C: add THE_ARCHITECT.
+// Exception: NEOW uses separate live logic (2 random positive relics and a curse-related one; dynamic relic-ID keys; Neow L214-278).
+// Treat the event choice as a decision point; evaluate each option using current gold/deck/max HP and carry changes into simulation.
 public class EvOpt
 {
     public string Name;
-    public int Hp;              // 当前血变化(负=扣, 全部为不可减免伤)
-    public int MaxHp;           // 上限变化
-    public int HealPct;         // 回血%(100=回满)
-    public int Gold;            // 金钱变化(-9999=清空全部)
-    public int AddCards;        // 获得卡数
-    public int RemoveCards;     // 移除卡数(自选)
-    public int TransformCards;  // 转化卡数
-    public int UpgradeCards;    // 升级卡数(负=降级)
-    public int AddPotions;      // 药水变化
-    public int RewardsSteps;    // 消耗 Rewards 流步数
-    public string AddRelic;     // 具体遗物id / "ROLL"=roll一件 / "ROLL_X2" / "CHOICE"=池内可选
-    public string AddCurse;     // 诅咒id
-    public int MinGold;         // 金钱门槛(不足则选项不可用)
-    public string AddCardEntry; // 加入牌库的具体卡 entry(如 byrdonisegg 鸟蛋任务卡, 供跨节点联动: 篝火孵化)
-    public int AddCardType;     // 该卡类型(1攻2技3能5诅咒), 默认0
-    public double Bonus;        // 额外固定价值(联动收益: 蛋能在篝火孵化 0费14攻, 选项本身也该加分)
-    public string Key;          // TextKey选项名后缀(源码 "EVID.pages.PAGE.options.KEY" 的 KEY 段)。
-                                // 选项数动态的事件(锁定变体/按状态增减)按名匹配, 不再依赖下标对齐。
-                                // LOCKED 变体(如 "SNAKE_LOCKED")不出现在可点列表, 无需单独建项。
+    public int Hp;              // Current HP change; negative means loss, all unblockable.
+    public int MaxHp;           // Maximum HP change.
+    public int HealPct;         // Healing percentage; 100 means full heal.
+    public int Gold;            // Gold change; -9999 means lose all gold.
+    public int AddCards;        // Number of cards gained.
+    public int RemoveCards;     // Number of chosen cards removed.
+    public int TransformCards;  // Number of cards transformed.
+    public int UpgradeCards;    // Number of cards upgraded; negative means downgraded.
+    public int AddPotions;      // Potion-count change.
+    public int RewardsSteps;    // Rewards RNG steps consumed.
+    public string AddRelic;     // Specific relic ID, ROLL for one random relic, ROLL_X2, or CHOICE for a pool choice.
+    public string AddCurse;     // Curse ID.
+    public int MinGold;         // Minimum gold; the option is unavailable below it.
+    public string AddCardEntry; // Specific card entry added, such as byrdonisegg, for cross-node interactions including rest-site hatching.
+    public int AddCardType;     // Card type: 1 Attack, 2 Skill, 3 Power, 5 Curse; defaults to 0.
+    public double Bonus;        // Fixed bonus value, such as the egg becoming a zero-cost 14-damage attack at a rest site.
+    public string Key;          // TextKey option suffix: KEY in EVID.pages.PAGE.options.KEY.
+                                // Match dynamic option lists by name, including locked/state-dependent variants, instead of relying only on indices.
+                                // LOCKED variants such as SNAKE_LOCKED are absent from clickable options, so need no separate entries.
     public string Note;
 }
 
@@ -40,299 +40,299 @@ public static class EventOptions
     {
         // ═══ A-M ═══
         ["ABYSSAL_BATHS"] = new[] {
-            // 源码序 AbyssalBaths.GenerateInitialOptions: [IMMERSE, ABSTAIN]; 后页 keys=LINGER|EXIT_BATHS
-            new EvOpt { Name="浸泡2次离开", Key="IMMERSE", Hp=-7, MaxHp=4, Note="伤3+4递增, 边际收益截断在2次(后页LINGER/EXIT_BATHS)" },
-            new EvOpt { Name="弃疗", Key="ABSTAIN", Hp=10, Note="固定回10" },
+            // Source order: AbyssalBaths.GenerateInitialOptions = [IMMERSE, ABSTAIN]; later LINGER/EXIT_BATHS pages.
+            new EvOpt { Name="Immerse twice, then leave", Key="IMMERSE", Hp=-7, MaxHp=4, Note="Increasing damage of 3+4; stop after two immersions (later LINGER/EXIT_BATHS pages)" },
+            new EvOpt { Name="Abstain", Key="ABSTAIN", Hp=10, Note="Heal exactly 10 HP" },
         },
         ["AMALGAMATOR"] = new[] {
-            new EvOpt { Name="合并打击", Key="COMBINE_STRIKES", RemoveCards=2, AddCards=1, Note="2基础打击→究极打击(固定)" },
-            new EvOpt { Name="合并防御", Key="COMBINE_DEFENDS", RemoveCards=2, AddCards=1, Note="2基础防御→究极防御(固定)" },
+            new EvOpt { Name="Combine Strikes", Key="COMBINE_STRIKES", RemoveCards=2, AddCards=1, Note="2 basic Strikes become 1 ultimate Strike (fixed)" },
+            new EvOpt { Name="Combine Defends", Key="COMBINE_DEFENDS", RemoveCards=2, AddCards=1, Note="2 basic Defends become 1 ultimate Defend (fixed)" },
         },
         ["AROMA_OF_CHAOS"] = new[] {
-            // A级重排: 源码序 AromaOfChaos.GenerateInitialOptions = [LET_GO=转化, MAINTAIN_CONTROL=升级](原表倒序)
-            new EvOpt { Name="转化", Key="LET_GO", TransformCards=1, Note="自选1张" },
-            new EvOpt { Name="升级", Key="MAINTAIN_CONTROL", UpgradeCards=1, Note="自选1张" },
+            // Grade A reorder: AromaOfChaos = [LET_GO (transform), MAINTAIN_CONTROL (upgrade)]; old table was reversed.
+            new EvOpt { Name="Transform", Key="LET_GO", TransformCards=1, Note="Choose 1 card" },
+            new EvOpt { Name="Upgrade", Key="MAINTAIN_CONTROL", UpgradeCards=1, Note="Choose 1 card" },
         },
         ["BATTLEWORN_DUMMY"] = new[] {
-            // A级重排: 源码序 BattlewornDummy.GenerateInitialOptions = [SETTING_1(75血), SETTING_2(150), SETTING_3(300)](原表[档2,档3,档1]全错位)
-            new EvOpt { Name="档1:75血木桩", Key="SETTING_1", AddPotions=1, RewardsSteps=1, Note="最稳但收益低" },
-            new EvOpt { Name="档2:150血木桩", Key="SETTING_2", UpgradeCards=2, Note="3回合打150血→升2张随机(保守推荐)" },
-            new EvOpt { Name="档3:300血木桩", Key="SETTING_3", AddRelic="ROLL", RewardsSteps=1, Note="3回合打300血→roll遗物(输出足才选)" },
+            // Grade A reorder: BattlewornDummy = [SETTING_1 (75 HP), SETTING_2 (150), SETTING_3 (300)]; old order [2,3,1] was wrong.
+            new EvOpt { Name="Setting 1: 75-HP dummy", Key="SETTING_1", AddPotions=1, RewardsSteps=1, Note="Safest, but low reward" },
+            new EvOpt { Name="Setting 2: 150-HP dummy", Key="SETTING_2", UpgradeCards=2, Note="Deal 150 damage in 3 turns to upgrade 2 random cards (conservative recommendation)" },
+            new EvOpt { Name="Setting 3: 300-HP dummy", Key="SETTING_3", AddRelic="ROLL", RewardsSteps=1, Note="Deal 300 damage in 3 turns for a rolled relic; choose only with sufficient damage" },
         },
         ["BRAIN_LEECH"] = new[] {
-            new EvOpt { Name="分享知识", Key="SHARE_KNOWLEDGE", AddCards=1, RewardsSteps=15, Note="本职池5张必选1(有精确预测)" },
-            new EvOpt { Name="撕开", Key="RIP", Hp=-5, AddCards=1, RewardsSteps=9, Note="-5血, 无色池3选1可跳" },
+            new EvOpt { Name="Share Knowledge", Key="SHARE_KNOWLEDGE", AddCards=1, RewardsSteps=15, Note="Mandatory choice of 1 of 5 class cards (exact prediction available)" },
+            new EvOpt { Name="Rip", Key="RIP", Hp=-5, AddCards=1, RewardsSteps=9, Note="Lose 5 HP; choose 1 of 3 colorless cards, with skip allowed" },
         },
         ["BUGSLAYER"] = new[] {
-            new EvOpt { Name="灭绝", Key="EXTERMINATION", AddCards=1, Note="固定无色Exterminate" },
-            new EvOpt { Name="碾压", Key="SQUASH", AddCards=1, Note="固定无色Squash" },
+            new EvOpt { Name="Exterminate", Key="EXTERMINATION", AddCards=1, Note="Fixed colorless Exterminate card" },
+            new EvOpt { Name="Squash", Key="SQUASH", AddCards=1, Note="Fixed colorless Squash card" },
         },
         ["BYRDONIS_NEST"] = new[] {
-            new EvOpt { Name="吃蛋", Key="EAT", MaxHp=7 },
-            new EvOpt { Name="拿蛋", Key="TAKE", AddCardEntry="byrdonisegg", AddCardType=0, Bonus=3.5, Note="蛋卡进牌库→篝火HATCH孵化0费14攻ByrdSwoop+鸟宠, 联动收益篝火兑现" },
+            new EvOpt { Name="Eat the egg", Key="EAT", MaxHp=7 },
+            new EvOpt { Name="Take the egg", Key="TAKE", AddCardEntry="byrdonisegg", AddCardType=0, Bonus=3.5, Note="Add egg to deck; HATCH at a rest site gives zero-cost, 14-damage ByrdSwoop and a bird companion; synergy pays off there" },
         },
         ["COLORFUL_PHILOSOPHERS"] = new[] {
-            // Key=色名大写且动态≤3(源码 ColorfulPhilosophers), 无静态Key可填; 单条抽象项按下标兜底
-            new EvOpt { Name="选异色池拿3张", AddCards=3, RewardsSteps=18, Note="普/罕/稀各3选1, 可逐档跳过; Key=色名动态, 按名匹配不适用" },
+            // Color-name keys are uppercase and dynamic, up to 3 (ColorfulPhilosophers); use a single abstract entry with index fallback.
+            new EvOpt { Name="Choose another color pool and take 3 cards", AddCards=3, RewardsSteps=18, Note="Choose 1 of 3 at each common/uncommon/rare tier; each may be skipped. Color-name keys are dynamic, so name matching does not apply" },
         },
         ["COLOSSAL_FLOWER"] = new[] {
-            // 首页仅2项 [EXTRACT_CURRENT_PRIZE_1, REACH_DEEPER_1], 后页 keys=EXTRACT_INSTEAD|POLLINOUS_CORE;
-            // 表3项是多页路径的期望抽象(表长≠实际, 下标对齐不触发), 挖2层/挖到底共用首页 REACH_DEEPER_1
-            new EvOpt { Name="立即采收", Key="EXTRACT_CURRENT_PRIZE_1", Gold=35 },
-            new EvOpt { Name="挖2层采收", Key="REACH_DEEPER_1", Hp=-11, Gold=135, Note="后页EXTRACT_INSTEAD" },
-            new EvOpt { Name="挖到底取核心", Key="REACH_DEEPER_1", Hp=-18, AddRelic="POLLINOUS_CORE", Note="累计-18血, 后页POLLINOUS_CORE" },
+            // First page has [EXTRACT_CURRENT_PRIZE_1, REACH_DEEPER_1]; later keys are EXTRACT_INSTEAD/POLLINOUS_CORE.
+            // Three entries abstract multi-page paths (table length differs, so no index match); digging two layers/to bottom shares REACH_DEEPER_1.
+            new EvOpt { Name="Harvest immediately", Key="EXTRACT_CURRENT_PRIZE_1", Gold=35 },
+            new EvOpt { Name="Dig 2 layers, then harvest", Key="REACH_DEEPER_1", Hp=-11, Gold=135, Note="Later page: EXTRACT_INSTEAD" },
+            new EvOpt { Name="Dig to the core", Key="REACH_DEEPER_1", Hp=-18, AddRelic="POLLINOUS_CORE", Note="Lose 18 HP total; later page: POLLINOUS_CORE" },
         },
         ["CRYSTAL_SPHERE"] = new[] {
-            // A级重排: 源码序 CrystalSphere.GenerateInitialOptions = [UNCOVER_FUTURE(付费), PAYMENT_PLAN(Debt)](原表倒序)
-            // 预付费用=50+Rng(1,50)→51~100(表-75为期望), MinGold 实际=当次动态费用, 99为保守上界; 占卜小游戏奖池数值属未验证近似
-            new EvOpt { Name="预付占卜", Key="UNCOVER_FUTURE", Gold=-75, AddPotions=1, MinGold=99, Note="3次占卜期望; 费用51~100动态" },
-            new EvOpt { Name="分期(Debt诅咒)", Key="PAYMENT_PLAN", AddCurse="DEBT", Gold=35, AddPotions=1, Note="6次占卜期望≈2倍, 全走事件流0步" },
+            // Grade A reorder: CrystalSphere = [UNCOVER_FUTURE (pay), PAYMENT_PLAN (Debt)]; old table was reversed.
+            // Upfront cost = 50+Rng(1,50), or 51-100; table uses expected 75, conservative MinGold=99. Minigame rewards remain unverified estimates.
+            new EvOpt { Name="Pay upfront for divination", Key="UNCOVER_FUTURE", Gold=-75, AddPotions=1, MinGold=99, Note="Expected value of 3 divinations; cost varies from 51 to 100" },
+            new EvOpt { Name="Installments (Debt curse)", Key="PAYMENT_PLAN", AddCurse="DEBT", Gold=35, AddPotions=1, Note="Expected value of 6 divinations, about twice as much; event RNG only, 0 Rewards steps" },
         },
         ["DARV"] = new[] {
-            // Ancient七件套: Key=遗物id动态(3选1), 无静态Key
-            new EvOpt { Name="三选一boss级遗物", AddRelic="CHOICE", Note="免费; DustyTome顶替时固定占第3格(末位, Darv L153-162: Take(2)后Add), 非随机1格" },
+            // Seven Ancient events use dynamic relic-ID keys for three-way choices, with no static key.
+            new EvOpt { Name="Choose 1 of 3 boss-level relics", AddRelic="CHOICE", Note="Free; DustyTome always replaces slot 3, not a random slot (Darv L153-162: Take(2), then Add)" },
         },
         ["DENSE_VEGETATION"] = new[] {
-            new EvOpt { Name="硬闯", Key="TRUDGE_ON", Hp=-8, Gold=80, Note="金61~99, 80为期望(源码核准)" },
-            new EvOpt { Name="休息", Key="REST", HealPct=30, Note="回30%但强制战斗且无战利品(后页FIGHT)" },
+            new EvOpt { Name="Push through", Key="TRUDGE_ON", Hp=-8, Gold=80, Note="61-99 gold; expected 80 (checked against source)" },
+            new EvOpt { Name="Rest", Key="REST", HealPct=30, Note="Heal 30%, then mandatory combat with no loot (later FIGHT page)" },
         },
         ["DOLL_ROOM"] = new[] {
-            // B级补缺: 源码3项 DollRoom.GenerateInitialOptions L86-91 = [RANDOM, TAKE_SOME_TIME(TakeTimeHpLoss=5), EXAMINE], 原表漏-5血中档
-            new EvOpt { Name="随手拿", Key="RANDOM", AddRelic="ROLL", Note="3娃娃随机1(免费)" },
-            new EvOpt { Name="花点时间挑", Key="TAKE_SOME_TIME", Hp=-5, AddRelic="CHOICE", Note="3娃娃随机去1后2选1" },
-            new EvOpt { Name="仔细检查", Key="EXAMINE", Hp=-15, AddRelic="CHOICE", Note="-15血换3选1" },
+            // Grade B missing option: DollRoom L86-91 has RANDOM, TAKE_SOME_TIME (5 HP loss), EXAMINE; old table omitted the middle option.
+            new EvOpt { Name="Take one casually", Key="RANDOM", AddRelic="ROLL", Note="1 of 3 random dolls, free" },
+            new EvOpt { Name="Take time to choose", Key="TAKE_SOME_TIME", Hp=-5, AddRelic="CHOICE", Note="Randomly remove 1 of 3 dolls, then choose between the remaining 2" },
+            new EvOpt { Name="Inspect carefully", Key="EXAMINE", Hp=-15, AddRelic="CHOICE", Note="Lose 15 HP to choose 1 of 3" },
         },
         ["DOORS_OF_LIGHT_AND_DARK"] = new[] {
-            new EvOpt { Name="光之门", Key="LIGHT", UpgradeCards=2, Note="随机2张" },
-            new EvOpt { Name="暗之门", Key="DARK", RemoveCards=1, Note="自选1张" },
+            new EvOpt { Name="Door of Light", Key="LIGHT", UpgradeCards=2, Note="2 random cards" },
+            new EvOpt { Name="Door of Darkness", Key="DARK", RemoveCards=1, Note="Choose 1 card" },
         },
         ["DROWNING_BEACON"] = new[] {
-            new EvOpt { Name="捞瓶子", Key="BOTTLE", AddPotions=1, Note="固定荧水药水" },
-            new EvOpt { Name="爬灯塔", Key="CLIMB", MaxHp=-13, AddRelic="FRESNEL_LENS" },
+            new EvOpt { Name="Retrieve the bottle", Key="BOTTLE", AddPotions=1, Note="Fixed glowing-water potion" },
+            new EvOpt { Name="Climb the lighthouse", Key="CLIMB", MaxHp=-13, AddRelic="FRESNEL_LENS" },
         },
         ["ENDLESS_CONVEYOR"] = new[] {
-            // B级重写: 两条互斥路径(EndlessConveyor L128-132/L259-269) — OBSERVE_CHEF 只在INITIAL页且立即结束;
-            // 抓盘后第二页选项是继续抓或LEAVE, 不存在"抓完再观察厨师+升1"路径。每盘-40(不足→LOCKED); MinGold=120 是进事件条件, 非选项门槛
-            new EvOpt { Name="抓盘吃(期望按2盘)", Gold=-80, MaxHp=2, MinGold=40, Note="每盘-40, 菜品加权随机收益; Key=菜名动态, 按名匹配不适用" },
-            new EvOpt { Name="只观察厨师", Key="OBSERVE_CHEF", UpgradeCards=1, Note="免费升1随机, 选后立即结束事件" },
+            // Grade B rewrite: mutually exclusive EndlessConveyor paths (L128-132/L259-269); OBSERVE_CHEF appears only initially and ends the event.
+            // After taking a dish, only take-more/LEAVE remain; no later chef upgrade. Each dish costs 40 (LOCKED if unaffordable); MinGold=120 is an entry condition.
+            new EvOpt { Name="Take dishes (assume 2 dishes for expected value)", Gold=-80, MaxHp=2, MinGold=40, Note="40 gold per dish; weighted random benefits. Dish-name keys are dynamic, so name matching does not apply" },
+            new EvOpt { Name="Watch the chef", Key="OBSERVE_CHEF", UpgradeCards=1, Note="Upgrade 1 random card free; choosing this immediately ends the event" },
         },
         ["FAKE_MERCHANT"] = new[] {
-            // CUSTOM: 源码 GenerateInitialOptions 返回空(自定义交互UI, 无EventOption) — 表项是策略抽象, 下标/按名匹配均不适用, live 需特殊处理
-            new EvOpt { Name="扔恶臭药水开战", AddRelic="ROLL", Note="需持FoulPotion, 胜白拿地毯+全部假货(D档)" },
-            new EvOpt { Name="离开", Note="假遗物D档不值得买" },
+            // CUSTOM: GenerateInitialOptions returns no EventOptions for custom UI; these are strategy abstractions requiring special live handling, not index/name matching.
+            new EvOpt { Name="Throw Foul Potion and fight", AddRelic="ROLL", Note="Requires FoulPotion; victory gives the rug and all fake relics (D tier)" },
+            new EvOpt { Name="Leave", Note="D-tier fake relics are not worth buying" },
         },
         ["FIELD_OF_MAN_SIZED_HOLES"] = new[] {
-            // A级重排: 源码序 = [RESIST(移2+诅咒), ENTER_YOUR_HOLE(附魔)](原表倒序)
-            new EvOpt { Name="抵抗", Key="RESIST", RemoveCards=2, AddCurse="NORMALITY", Note="移2自选+诅咒" },
-            new EvOpt { Name="进洞", Key="ENTER_YOUR_HOLE", Note="1卡附魔PerfectFit无代价" },
+            // Grade A reorder: [RESIST (remove 2 + curse), ENTER_YOUR_HOLE (enchant)]; old table was reversed.
+            new EvOpt { Name="Resist", Key="RESIST", RemoveCards=2, AddCurse="NORMALITY", Note="Remove 2 chosen cards and gain a curse" },
+            new EvOpt { Name="Enter the hole", Key="ENTER_YOUR_HOLE", Note="Enchant 1 card with PerfectFit, free" },
         },
         ["GRAVE_OF_THE_FORGOTTEN"] = new[] {
-            // A级重排: 源码序 = [CONFRONT(诅咒+附魔, ±LOCKED), ACCEPT(遗物)](原表倒序)
-            new EvOpt { Name="直面", Key="CONFRONT", AddCurse="DECAY", Note="诅咒+1卡附魔灵魂(无可附魔卡时LOCKED)" },
-            new EvOpt { Name="接纳", Key="ACCEPT", AddRelic="FORGOTTEN_SOUL", Note="免费白拿" },
+            // Grade A reorder: [CONFRONT (curse + enchant, possibly LOCKED), ACCEPT (relic)]; old table was reversed.
+            new EvOpt { Name="Face it", Key="CONFRONT", AddCurse="DECAY", Note="Gain a curse and a soul enchantment on 1 card (LOCKED if none eligible)" },
+            new EvOpt { Name="Accept", Key="ACCEPT", AddRelic="FORGOTTEN_SOUL", Note="Free reward" },
         },
         ["HUNGRY_FOR_MUSHROOMS"] = new[] {
-            // RelicOption: Key=遗物id
-            new EvOpt { Name="大蘑菇", Key="BIG_MUSHROOM", AddRelic="BIG_MUSHROOM", Note="免费白拿" },
-            new EvOpt { Name="芳香蘑菇", Key="FRAGRANT_MUSHROOM", Hp=-15, UpgradeCards=2, AddRelic="FRAGRANT_MUSHROOM", Note="旧表漏了升2张收益" },
+            // RelicOption uses the relic ID as Key.
+            new EvOpt { Name="Big Mushroom", Key="BIG_MUSHROOM", AddRelic="BIG_MUSHROOM", Note="Free reward" },
+            new EvOpt { Name="Fragrant Mushroom", Key="FRAGRANT_MUSHROOM", Hp=-15, UpgradeCards=2, AddRelic="FRAGRANT_MUSHROOM", Note="The old table omitted 2 card upgrades" },
         },
         ["INFESTED_AUTOMATON"] = new[] {
-            new EvOpt { Name="研究", Key="STUDY", AddCards=1, RewardsSteps=3, Note="随机能力牌强制入库" },
-            new EvOpt { Name="触摸核心", Key="TOUCH_CORE", AddCards=1, RewardsSteps=3, Note="随机0费牌强制入库" },
+            new EvOpt { Name="Study", Key="STUDY", AddCards=1, RewardsSteps=3, Note="Mandatory addition of a random Power card" },
+            new EvOpt { Name="Touch the core", Key="TOUCH_CORE", AddCards=1, RewardsSteps=3, Note="Mandatory addition of a random zero-cost card" },
         },
         ["JUNGLE_MAZE_ADVENTURE"] = new[] {
-            new EvOpt { Name="独闯", Key="SOLO_QUEST", Hp=-18, Gold=150, Note="金150±15(源码核准)" },
-            new EvOpt { Name="结伴", Key="JOIN_FORCES", Gold=50, Note="无损, 金50±15" },
+            new EvOpt { Name="Go alone", Key="SOLO_QUEST", Hp=-18, Gold=150, Note="150 +/-15 gold (checked against source)" },
+            new EvOpt { Name="Go together", Key="JOIN_FORCES", Gold=50, Note="No damage; 50 +/-15 gold" },
         },
         ["LOST_WISP"] = new[] {
-            // A级重排: 源码序 = [CLAIM(遗物+Decay), SEARCH(+60)](原表倒序)
-            new EvOpt { Name="认领", Key="CLAIM", AddRelic="LOST_WISP", AddCurse="DECAY", Note="A档遗物但带Decay" },
-            new EvOpt { Name="搜索", Key="SEARCH", Gold=60, Note="无损, 金60±15" },
+            // Grade A reorder: [CLAIM (relic + Decay), SEARCH (+60)]; old table was reversed.
+            new EvOpt { Name="Claim", Key="CLAIM", AddRelic="LOST_WISP", AddCurse="DECAY", Note="A-tier relic, but adds Decay" },
+            new EvOpt { Name="Search", Key="SEARCH", Gold=60, Note="No damage; 60 +/-15 gold" },
         },
         ["LUMINOUS_CHOIR"] = new[] {
-            // A级重排: 源码序 = [REACH_INTO_THE_FLESH, OFFER_TRIBUTE(±LOCKED)](原表倒序)
-            new EvOpt { Name="伸手入肉", Key="REACH_INTO_THE_FLESH", RemoveCards=2, AddCurse="SPORE_MIND" },
-            new EvOpt { Name="献上贡品", Key="OFFER_TRIBUTE", Gold=-125, AddRelic="ROLL", RewardsSteps=1, MinGold=149, Note="门槛=149-Rng(0,50)→99~149动态, MinGold=149偏保守" },
+            // Grade A reorder: [REACH_INTO_THE_FLESH, OFFER_TRIBUTE (possibly LOCKED)]; old table was reversed.
+            new EvOpt { Name="Reach into the flesh", Key="REACH_INTO_THE_FLESH", RemoveCards=2, AddCurse="SPORE_MIND" },
+            new EvOpt { Name="Offer tribute", Key="OFFER_TRIBUTE", Gold=-125, AddRelic="ROLL", RewardsSteps=1, MinGold=149, Note="Threshold = 149-Rng(0,50), or 99-149; MinGold=149 is conservative" },
         },
         ["MORPHIC_GROVE"] = new[] {
-            // A级重排: 源码序 = [GROUP(清金+转2), LONER(+5上限)](原表倒序)
-            new EvOpt { Name="合群", Key="GROUP", Gold=-9999, TransformCards=2, Note="失去全部金币" },
-            new EvOpt { Name="独行", Key="LONER", MaxHp=5, Note="无代价" },
+            // Grade A reorder: [GROUP (lose gold + transform 2), LONER (+5 max HP)]; old table was reversed.
+            new EvOpt { Name="Join the group", Key="GROUP", Gold=-9999, TransformCards=2, Note="Lose all gold" },
+            new EvOpt { Name="Go alone", Key="LONER", MaxHp=5, Note="No cost" },
         },
         // ═══ N-Z ═══
-        ["NONUPEIPE"] = new[] { new EvOpt { Name="三选一饰品遗物", AddRelic="CHOICE", Note="Key=遗物id动态" } },
-        ["OROBAS"] = new[] { new EvOpt { Name="三池遗物三选一", AddRelic="CHOICE", Note="Key=遗物id动态" } },
-        ["PAEL"] = new[] { new EvOpt { Name="三池Pael遗物三选一", AddRelic="CHOICE", Note="Key=遗物id动态" } },
+        ["NONUPEIPE"] = new[] { new EvOpt { Name="Choose 1 of 3 trinket relics", AddRelic="CHOICE", Note="Relic-ID key is dynamic" } },
+        ["OROBAS"] = new[] { new EvOpt { Name="Choose 1 of 3 relics from 3 pools", AddRelic="CHOICE", Note="Relic-ID key is dynamic" } },
+        ["PAEL"] = new[] { new EvOpt { Name="Choose 1 of 3 Pael relics from 3 pools", AddRelic="CHOICE", Note="Relic-ID key is dynamic" } },
         ["POTION_COURIER"] = new[] {
-            // A级重排: 源码序 = [GRAB_POTIONS(3恶臭), RANSACK(1罕见)](原表倒序)
-            new EvOpt { Name="抓药水", Key="GRAB_POTIONS", AddPotions=3, Note="3瓶固定FoulPotion(恶臭, 可留着开假商人)" },
-            new EvOpt { Name="洗劫", Key="RANSACK", AddPotions=1, RewardsSteps=1, Note="1瓶随机罕见药水" },
+            // Grade A reorder: [GRAB_POTIONS (3 Foul), RANSACK (1 uncommon)]; old table was reversed.
+            new EvOpt { Name="Take potions", Key="GRAB_POTIONS", AddPotions=3, Note="3 fixed FoulPotions; keep one for the fake merchant encounter" },
+            new EvOpt { Name="Loot", Key="RANSACK", AddPotions=1, RewardsSteps=1, Note="1 random uncommon potion" },
         },
         ["PUNCH_OFF"] = new[] {
-            // A级重排: 源码序 = [NAB(Injury+遗物), I_CAN_TAKE_THEM(战斗)](原表倒序)
-            new EvOpt { Name="顺手牵羊", Key="NAB", AddRelic="ROLL", AddCurse="INJURY", RewardsSteps=1 },
-            new EvOpt { Name="打一架", Key="I_CAN_TAKE_THEM", AddRelic="ROLL", AddPotions=1, Gold=94, RewardsSteps=2, Note="需打赢2×拳击构装体(后页FIGHT); 金91~98" },
+            // Grade A reorder: [NAB (Injury + relic), I_CAN_TAKE_THEM (combat)]; old table was reversed.
+            new EvOpt { Name="Nab", Key="NAB", AddRelic="ROLL", AddCurse="INJURY", RewardsSteps=1 },
+            new EvOpt { Name="Fight", Key="I_CAN_TAKE_THEM", AddRelic="ROLL", AddPotions=1, Gold=94, RewardsSteps=2, Note="Defeat 2 boxing constructs (later FIGHT page); 91-98 gold" },
         },
         ["RANWID_THE_ELDER"] = new[] {
-            // B级补缺+重排: 源码3项 RanwidTheElder.GenerateInitialOptions L77-108 = [POTION(±LOCKED), GOLD, RELIC(±LOCKED)];
-            // 交出的药水/遗物是事件随机指定, 非玩家自选。原表漏药水项且顺序错
-            new EvOpt { Name="交出药水", Key="POTION", AddPotions=-1, AddRelic="ROLL", RewardsSteps=1, Note="弃1随机药水→1遗物(无药水时LOCKED)" },
-            new EvOpt { Name="交出100金", Key="GOLD", Gold=-100, AddRelic="ROLL", RewardsSteps=1, MinGold=100 },
-            new EvOpt { Name="交出遗物换2", Key="RELIC", AddRelic="ROLL_X2", RewardsSteps=2, Note="失1件随机可交易遗物, 净+1(无可交易遗物时LOCKED)" },
+            // Grade B addition/reorder: RanwidTheElder L77-108 has POTION (possibly LOCKED), GOLD, RELIC (possibly LOCKED).
+            // The event randomly specifies the potion/relic to surrender; the player does not choose. Old table omitted potion and had wrong order.
+            new EvOpt { Name="Hand over a potion", Key="POTION", AddPotions=-1, AddRelic="ROLL", RewardsSteps=1, Note="Discard 1 random potion for 1 relic (LOCKED if no potions)" },
+            new EvOpt { Name="Hand over 100 gold", Key="GOLD", Gold=-100, AddRelic="ROLL", RewardsSteps=1, MinGold=100 },
+            new EvOpt { Name="Trade a relic for 2", Key="RELIC", AddRelic="ROLL_X2", RewardsSteps=2, Note="Lose 1 random tradable relic; net +1 (LOCKED if none tradable)" },
         },
         ["REFLECTIONS"] = new[] {
-            new EvOpt { Name="触碰镜子", Key="TOUCH_A_MIRROR", UpgradeCards=4, Note="先降级≤2再升级≤4, 净赚" },
-            new EvOpt { Name="打碎", Key="SHATTER", AddCurse="BAD_LUCK", Note="牌库翻倍! 对精简流毁灭性, 几乎永不选" },
+            new EvOpt { Name="Touch the mirror", Key="TOUCH_A_MIRROR", UpgradeCards=4, Note="Downgrade up to 2, then upgrade up to 4; net gain" },
+            new EvOpt { Name="Shatter", Key="SHATTER", AddCurse="BAD_LUCK", Note="Doubles the deck! Devastating for thin-deck builds; almost never choose" },
         },
         ["RELIC_TRADER"] = new[] {
-            // Key=TOP|MIDDLE|BOTTOM 且1-3项动态; 单条抽象项按下标兜底
-            new EvOpt { Name="换一件", AddRelic="ROLL", RewardsSteps=3, Note="失1得1侧向赌, 进门即3步; Key=TOP/MIDDLE/BOTTOM动态" },
+            // TOP/MIDDLE/BOTTOM keys and 1-3 options are dynamic; use a single abstract entry with index fallback.
+            new EvOpt { Name="Exchange one", AddRelic="ROLL", RewardsSteps=3, Note="Lose 1 and gain 1 as a sidegrade gamble; 3 steps on entry. TOP/MIDDLE/BOTTOM keys are dynamic" },
         },
         ["ROOM_FULL_OF_CHEESE"] = new[] {
-            // A级重排: 源码序 = [GORGE(8选2), SEARCH(-14+遗物)](原表倒序)
-            new EvOpt { Name="大吃", Key="GORGE", AddCards=2, RewardsSteps=16, Note="8张普通卡选2(uniform 2步/卡)" },
-            new EvOpt { Name="搜寻", Key="SEARCH", Hp=-14, AddRelic="CHOSEN_CHEESE", Note="A档遗物" },
+            // Grade A reorder: [GORGE (choose 2 of 8), SEARCH (-14 HP + relic)]; old table was reversed.
+            new EvOpt { Name="Feast", Key="GORGE", AddCards=2, RewardsSteps=16, Note="Choose 2 of 8 common cards (uniform; 2 steps/card)" },
+            new EvOpt { Name="Search", Key="SEARCH", Hp=-14, AddRelic="CHOSEN_CHEESE", Note="A-tier relic" },
         },
         ["ROUND_TEA_PARTY"] = new[] {
-            new EvOpt { Name="喝茶", Key="ENJOY_TEA", HealPct=100, AddRelic="ROYAL_POISON", Note="回满+D档负面遗物, 回满是主收益" },
-            new EvOpt { Name="挑衅", Key="PICK_FIGHT", Hp=-11, AddRelic="ROLL", RewardsSteps=1, Note="后页CONTINUE_FIGHT" },
+            new EvOpt { Name="Drink tea", Key="ENJOY_TEA", HealPct=100, AddRelic="ROYAL_POISON", Note="Full heal plus a negative D-tier relic; healing is the main benefit" },
+            new EvOpt { Name="Provoke", Key="PICK_FIGHT", Hp=-11, AddRelic="ROLL", RewardsSteps=1, Note="Later page: CONTINUE_FIGHT" },
         },
         ["SAPPHIRE_SEED"] = new[] {
-            new EvOpt { Name="吃掉", Key="EAT", Hp=9, UpgradeCards=1, Note="回9血+升1自选" },
-            new EvOpt { Name="种下", Key="PLANT", Note="1卡附魔Sown" },
+            new EvOpt { Name="Eat", Key="EAT", Hp=9, UpgradeCards=1, Note="Heal 9 HP and upgrade 1 chosen card" },
+            new EvOpt { Name="Plant", Key="PLANT", Note="Enchant 1 card with Sown" },
         },
         ["SELF_HELP_BOOK"] = new[] {
-            // 源码: 每项=免费给1张对应类型卡附魔2层(有该类型可附魔卡才出现, 否则LOCKED) → 选项数1-4动态
-            new EvOpt { Name="读封底(攻卡Sharp+2)", Key="READ_THE_BACK", UpgradeCards=1, Bonus=0.5, Note="攻击卡+2伤, 免费" },
-            new EvOpt { Name="读一段(技卡Nimble+2)", Key="READ_PASSAGE", UpgradeCards=1, Note="技能卡+2格挡, 免费" },
-            new EvOpt { Name="通读(能力Swift+2)", Key="READ_ENTIRE_BOOK", UpgradeCards=1, Note="能力卡附魔, 免费" },
-            new EvOpt { Name="跳过", Key="NO_OPTIONS", Note="无可附魔卡时的唯一选项" },
+            // Each option enchants one card of its corresponding type with 2 stacks, free; unavailable types are LOCKED, so 1-4 options vary dynamically.
+            new EvOpt { Name="Read the back cover (Attacks: Sharp+2)", Key="READ_THE_BACK", UpgradeCards=1, Bonus=0.5, Note="Attack cards gain 2 damage, free" },
+            new EvOpt { Name="Read a passage (Skills: Nimble+2)", Key="READ_PASSAGE", UpgradeCards=1, Note="Skill cards gain 2 Block, free" },
+            new EvOpt { Name="Read it all (Powers: Swift+2)", Key="READ_ENTIRE_BOOK", UpgradeCards=1, Note="Enchant Power cards, free" },
+            new EvOpt { Name="Skip", Key="NO_OPTIONS", Note="Only option when no cards can be enchanted" },
         },
         ["SLIPPERY_BRIDGE"] = new[] {
-            new EvOpt { Name="放手", Key="OVERCOME", RemoveCards=1, Note="免费移除展示的随机非基础卡" },
-            new EvOpt { Name="坚持1次再放手", Key="HOLD_ON_0", Hp=-3, RemoveCards=1, Note="-3血重roll目标(后页HOLD_ON_n)" },
+            new EvOpt { Name="Let go", Key="OVERCOME", RemoveCards=1, Note="Remove the displayed random non-basic card, free" },
+            new EvOpt { Name="Hold on once, then let go", Key="HOLD_ON_0", Hp=-3, RemoveCards=1, Note="Lose 3 HP to reroll the target (later HOLD_ON_n pages)" },
         },
         ["SPIRALING_WHIRLPOOL"] = new[] {
-            new EvOpt { Name="观察漩涡", Key="OBSERVE", Note="1卡附魔Spiral" },
-            new EvOpt { Name="喝下", Key="DRINK", HealPct=33 },
+            new EvOpt { Name="Watch the whirlpool", Key="OBSERVE", Note="Enchant 1 card with Spiral" },
+            new EvOpt { Name="Drink", Key="DRINK", HealPct=33 },
         },
         ["SPIRIT_GRAFTER"] = new[] {
-            new EvOpt { Name="接纳", Key="LET_IT_IN", Hp=25, AddCards=1, Note="回25+得Metamorphosis能力牌" },
-            new EvOpt { Name="排斥", Key="REJECTION", Hp=-10, UpgradeCards=1 },
+            new EvOpt { Name="Accept", Key="LET_IT_IN", Hp=25, AddCards=1, Note="Heal 25 HP and gain the Metamorphosis Power card" },
+            new EvOpt { Name="Reject", Key="REJECTION", Hp=-10, UpgradeCards=1 },
         },
         ["STONE_OF_ALL_TIME"] = new[] {
-            // 两项均有 ±LOCKED 变体
-            new EvOpt { Name="举石", Key="LIFT", MaxHp=10, AddPotions=-1, Note="弃1随机药水+10上限(无药水时LOCKED)" },
-            new EvOpt { Name="推石", Key="PUSH", Hp=-6, Note="1卡附魔Vigorous×8" },
+            // Both options have possible LOCKED variants.
+            new EvOpt { Name="Lift the stone", Key="LIFT", MaxHp=10, AddPotions=-1, Note="Discard 1 random potion for +10 max HP (LOCKED if no potions)" },
+            new EvOpt { Name="Push the stone", Key="PUSH", Hp=-6, Note="Enchant 1 card with Vigorous x8" },
         },
         ["SUNKEN_STATUE"] = new[] {
-            new EvOpt { Name="拔剑", Key="GRAB_SWORD", AddRelic="SWORD_OF_STONE", Note="免费白拿(杀5精英变玉剑)" },
-            new EvOpt { Name="潜水", Key="DIVE_INTO_WATER", Hp=-7, Gold=111, Note="金111±10(源码核准)" },
+            new EvOpt { Name="Draw the sword", Key="GRAB_SWORD", AddRelic="SWORD_OF_STONE", Note="Free reward; kill 5 elites to turn it into the jade sword" },
+            new EvOpt { Name="Dive", Key="DIVE_INTO_WATER", Hp=-7, Gold=111, Note="111 +/-10 gold (checked against source)" },
         },
         ["SUNKEN_TREASURY"] = new[] {
-            // A级重排: 源码序 = [FIRST_CHEST(小+60±8), SECOND_CHEST(大+333±30+Greed)](原表倒序)
-            new EvOpt { Name="小箱", Key="FIRST_CHEST", Gold=60, Note="金60±8" },
-            new EvOpt { Name="大箱", Key="SECOND_CHEST", Gold=333, AddCurse="GREED", Note="金333±30" },
+            // Grade A reorder: [FIRST_CHEST (small, 60 +/-8), SECOND_CHEST (large, 333 +/-30 + Greed)]; old table was reversed.
+            new EvOpt { Name="Small chest", Key="FIRST_CHEST", Gold=60, Note="60 +/-8 gold" },
+            new EvOpt { Name="Large chest", Key="SECOND_CHEST", Gold=333, AddCurse="GREED", Note="333 +/-30 gold" },
         },
         ["SYMBIOTE"] = new[] {
-            new EvOpt { Name="靠近", Key="APPROACH", Note="1卡附魔Corrupted(强); 无可附魔卡时LOCKED" },
-            new EvOpt { Name="火烧", Key="KILL_WITH_FIRE", TransformCards=1 },
+            new EvOpt { Name="Approach", Key="APPROACH", Note="Enchant 1 card with Corrupted (strong); LOCKED if none eligible" },
+            new EvOpt { Name="Burn it", Key="KILL_WITH_FIRE", TransformCards=1 },
         },
         ["TABLET_OF_TRUTH"] = new[] {
-            // A级重排: 源码序 = [DECIPHER_1, SMASH(回20)](原表倒序); 后页 DECIPHER|GIVE_UP
-            // 解读全档费用 -3/-6/-12/-24/-(MaxHp-1), 第5档升全部牌 (TabletOfTruth.GetDecipherCost L76-93)
-            new EvOpt { Name="解读2档", Key="DECIPHER_1", MaxHp=-9, UpgradeCards=2, Note="-3-6上限升2张随机, 更深档(-12/-24/-全血)慎入" },
-            new EvOpt { Name="砸碎", Key="SMASH", Hp=20, Note="回20血" },
+            // Grade A reorder: [DECIPHER_1, SMASH (heal 20)]; old table was reversed. Later pages: DECIPHER/GIVE_UP.
+            // Decipher costs: 3/6/12/24/(MaxHp-1); level 5 upgrades all cards (TabletOfTruth.GetDecipherCost L76-93).
+            new EvOpt { Name="Decipher 2 levels", Key="DECIPHER_1", MaxHp=-9, UpgradeCards=2, Note="Lose 3+6 max HP to upgrade 2 random cards; deeper levels (-12/-24/all HP) require caution" },
+            new EvOpt { Name="Smash it", Key="SMASH", Hp=20, Note="Heal 20 HP" },
         },
-        ["TANX"] = new[] { new EvOpt { Name="三选一近战遗物", AddRelic="CHOICE", Note="Key=遗物id动态" } },
+        ["TANX"] = new[] { new EvOpt { Name="Choose 1 of 3 melee relics", AddRelic="CHOICE", Note="Relic-ID key is dynamic" } },
         ["TEA_MASTER"] = new[] {
-            // A级重排: 源码序 = [BONE_TEA(-50,±L), EMBER_TEA(-150,±L), TEA_OF_DISCOURTESY(免费)](原表轮转错位)
-            new EvOpt { Name="骨茶", Key="BONE_TEA", Gold=-50, AddRelic="BONE_TEA", MinGold=50 },
-            new EvOpt { Name="余烬茶", Key="EMBER_TEA", Gold=-150, AddRelic="EMBER_TEA", MinGold=150 },
-            new EvOpt { Name="失礼之茶", Key="TEA_OF_DISCOURTESY", AddRelic="TEA_OF_DISCOURTESY", Note="免费" },
+            // Grade A reorder: [BONE_TEA (-50, possibly locked), EMBER_TEA (-150, possibly locked), TEA_OF_DISCOURTESY (free)]; old order was rotated.
+            new EvOpt { Name="Bone Tea", Key="BONE_TEA", Gold=-50, AddRelic="BONE_TEA", MinGold=50 },
+            new EvOpt { Name="Ember Tea", Key="EMBER_TEA", Gold=-150, AddRelic="EMBER_TEA", MinGold=150 },
+            new EvOpt { Name="Discourteous Tea", Key="TEA_OF_DISCOURTESY", AddRelic="TEA_OF_DISCOURTESY", Note="Free" },
         },
-        ["TEZCATARA"] = new[] { new EvOpt { Name="三池食物遗物三选一", AddRelic="CHOICE", Note="Key=遗物id动态" } },
+        ["TEZCATARA"] = new[] { new EvOpt { Name="Choose 1 of 3 food relics from 3 pools", AddRelic="CHOICE", Note="Relic-ID key is dynamic" } },
         ["THE_ARCHITECT"] = new[] {
-            // C级补条目: 通关结算对话事件(Combat布局), 选项只有对话推进+PROCEED→WinRun — 无策略价值, 条目仅作显式豁免
-            new EvOpt { Name="对话推进→通关", Key="PROCEED", Note="WinRun, 无决策点" },
+            // Grade C addition: final victory dialogue in combat layout; advance dialogue and PROCEED -> WinRun. Explicit exception with no strategic value.
+            new EvOpt { Name="Advance the dialogue to win", Key="PROCEED", Note="WinRun; no decision point" },
         },
         ["THE_FUTURE_OF_POTIONS"] = new[] {
-            // 源码: 每瓶药水一个选项(≤3), TextKey全部相同=POTION → 按名匹配后再挑最稀有那瓶(第i选项=第i瓶)
-            new EvOpt { Name="交易1药水", Key="POTION", AddCards=1, AddPotions=-1, RewardsSteps=6, Note="换同稀有度已升级卡3选1" },
+            // One option per potion, up to 3; every TextKey is POTION. After name matching, choose the rarest bottle (option i = potion i).
+            new EvOpt { Name="Trade 1 potion", Key="POTION", AddCards=1, AddPotions=-1, RewardsSteps=6, Note="Choose 1 of 3 upgraded cards of the same rarity" },
         },
         ["THE_LANTERN_KEY"] = new[] {
-            // A级重排: 源码序 = [RETURN_THE_KEY(+100), KEEP_THE_KEY(战斗)](原表倒序)
-            new EvOpt { Name="还钥匙", Key="RETURN_THE_KEY", Gold=100 },
-            new EvOpt { Name="留钥匙战斗", Key="KEEP_THE_KEY", AddCardEntry="lanternkey", AddCardType=0, Bonus=5.0, Note="后页FIGHT; 胜得钥匙卡→幕3 ChainActs 兑现历史书HistoryCourse(零费重放上回合末攻/技牌), 兑现时再+6" },
+            // Grade A reorder: [RETURN_THE_KEY (+100), KEEP_THE_KEY (combat)]; old table was reversed.
+            new EvOpt { Name="Return the key", Key="RETURN_THE_KEY", Gold=100 },
+            new EvOpt { Name="Keep the key and fight", Key="KEEP_THE_KEY", AddCardEntry="lanternkey", AddCardType=0, Bonus=5.0, Note="Later FIGHT page; victory grants key card. Act 3 ChainActs grants HistoryCourse (zero-cost replay of last turn's final Attack/Skill); add +6 when redeemed" },
         },
         ["THE_LEGENDS_WERE_TRUE"] = new[] {
-            new EvOpt { Name="夺图", Key="NAB_THE_MAP", AddCards=1, Note="战利品图卡(宝箱强化)" },
-            new EvOpt { Name="慢慢找出口", Key="SLOWLY_FIND_AN_EXIT", Hp=-8, AddPotions=1, RewardsSteps=1 },
+            new EvOpt { Name="Take the map", Key="NAB_THE_MAP", AddCards=1, Note="Spoils-map card (improves chests)" },
+            new EvOpt { Name="Find the exit slowly", Key="SLOWLY_FIND_AN_EXIT", Hp=-8, AddPotions=1, RewardsSteps=1 },
         },
         ["THIS_OR_THAT"] = new[] {
-            // A级重排: 源码序 = [PLAIN(-6+54), ORNATE(遗物+Clumsy)](原表倒序)
-            new EvOpt { Name="朴素", Key="PLAIN", Hp=-6, Gold=54, Note="金41~68, 54为期望(源码核准)" },
-            new EvOpt { Name="华丽", Key="ORNATE", AddRelic="ROLL", AddCurse="CLUMSY", RewardsSteps=1 },
+            // Grade A reorder: [PLAIN (-6 HP +54 gold), ORNATE (relic + Clumsy)]; old table was reversed.
+            new EvOpt { Name="Plain", Key="PLAIN", Hp=-6, Gold=54, Note="41-68 gold; expected 54 (checked against source)" },
+            new EvOpt { Name="Fancy", Key="ORNATE", AddRelic="ROLL", AddCurse="CLUMSY", RewardsSteps=1 },
         },
         ["TINKER_TIME"] = new[] {
-            // B级语义修正: 非全自选 — 页2从ATTACK/SKILL/POWER随机取2二选一, 页3词缀按类型从9种随机取2二选一 (TinkerTime)
-            new EvOpt { Name="定制疯狂科学卡", Key="CHOOSE_CARD_TYPE", AddCards=1, Note="类型随机2选1+词缀随机2选1(非自选)" },
+            // Grade B correction: TinkerTime is constrained; page 2 offers 2 random types from ATTACK/SKILL/POWER, then page 3 offers 2 of 9 type-specific modifiers.
+            new EvOpt { Name="Customize a Mad Science card", Key="CHOOSE_CARD_TYPE", AddCards=1, Note="Random choice between 2 types and between 2 modifiers, not unrestricted selection" },
         },
         ["TRASH_HEAP"] = new[] {
-            new EvOpt { Name="跳进去", Key="DIVE_IN", Hp=-8, AddRelic="ROLL", Note="5池随机1(暗石/捕梦网/手钻/血盆钱庄/长靴)" },
-            new EvOpt { Name="捡一把", Key="GRAB", Gold=100, AddCards=1, Note="+100金但10池随机1卡强制入库" },
+            new EvOpt { Name="Jump in", Key="DIVE_IN", Hp=-8, AddRelic="ROLL", Note="Random relic from a 5-item pool: Darkstone, Dream Catcher, Hand Drill, Maw Bank or Boots" },
+            new EvOpt { Name="Grab a handful", Key="GRAB", Gold=100, AddCards=1, Note="Gain 100 gold, but must add 1 random card from a 10-card pool" },
         },
         ["TRIAL"] = new[] {
-            // B级语义修正 (Trial L116-126/L164-168): 审判类型1/3随机(MERCHANT|NOBLE|NONDESCRIPT), 但每种是GUILTY/INNOCENT玩家二选一(可控非随机);
-            // NobleGuilty=回10血且无诅咒, 并非"全带诅咒"; REJECT不是离开 — 进入[再ACCEPT|DOUBLE_DOWN(弃档确认弹窗)]页, 本事件无干净离开路径
-            new EvOpt { Name="接受审判(期望)", Key="ACCEPT", Gold=100, UpgradeCards=1, RewardsSteps=1,
-                Note="类型1/3随机, 每种GUILTY/INNOCENT自选取优: 商人(2遗物/升2)|贵族(回10无诅咒/300金)|路人(2卡/转2), 期望化" },
-            new EvOpt { Name="拒绝(会被逼回)", Key="REJECT", Note="进入[再接受|DOUBLE_DOWN=弃档弹窗]页, 无干净离开, 等效最终仍接受; 永不选DOUBLE_DOWN" },
+            // Grade B correction (Trial L116-126/L164-168): trial type is random (MERCHANT/NOBLE/NONDESCRIPT, each 1/3), but GUILTY/INNOCENT is a player choice.
+            // NobleGuilty heals 10 without a curse. REJECT leads to ACCEPT/DOUBLE_DOWN (abandon-save confirmation), not a clean exit.
+            new EvOpt { Name="Accept judgment (expected value)", Key="ACCEPT", Gold=100, UpgradeCards=1, RewardsSteps=1,
+                Note="Each type has 1/3 probability; choose the better GUILTY/INNOCENT option: merchant (2 relics/2 upgrades), noble (heal 10 without curse/300 gold), passerby (2 cards/2 transforms)" },
+            new EvOpt { Name="Refuse (forced back)", Key="REJECT", Note="Leads to accept-again/DOUBLE_DOWN (abandon-save confirmation); no clean exit, so effectively accept. Never select DOUBLE_DOWN" },
         },
         ["UNREST_SITE"] = new[] {
-            // A级重排: 源码序 = [REST(回满+PoorSleep), KILL(-8上限+遗物)](原表倒序)
-            new EvOpt { Name="休息", Key="REST", HealPct=100, AddCurse="POOR_SLEEP", Note="血极低时的急救选项" },
-            new EvOpt { Name="击杀", Key="KILL", MaxHp=-8, AddRelic="ROLL", RewardsSteps=1 },
+            // Grade A reorder: [REST (full heal + PoorSleep), KILL (-8 max HP + relic)]; old table was reversed.
+            new EvOpt { Name="Rest", Key="REST", HealPct=100, AddCurse="POOR_SLEEP", Note="Emergency option at very low HP" },
+            new EvOpt { Name="Kill", Key="KILL", MaxHp=-8, AddRelic="ROLL", RewardsSteps=1 },
         },
-        ["VAKUU"] = new[] { new EvOpt { Name="三池遗物三选一", AddRelic="CHOICE", Note="Key=遗物id动态" } },
+        ["VAKUU"] = new[] { new EvOpt { Name="Choose 1 of 3 relics from 3 pools", AddRelic="CHOICE", Note="Relic-ID key is dynamic" } },
         ["WAR_HISTORIAN_REPY"] = new[] {
-            // Key=UNLOCK_CAGE|UNLOCK_CHEST 可二连; 单条"全拿"抽象项覆盖两步, 按下标兜底
-            new EvOpt { Name="开笼+开箱(单人全拿)", AddRelic="ROLL_X2", AddPotions=2, RemoveCards=1, RewardsSteps=4,
-                Note="需LanternKey任务链; 历史课[S]遗物+2药水+2遗物roll; Key=UNLOCK_CAGE/UNLOCK_CHEST二连" },
+            // UNLOCK_CAGE/UNLOCK_CHEST may occur consecutively; one take-all abstraction covers both via index fallback.
+            new EvOpt { Name="Unlock cage and chest (take all in solo)", AddRelic="ROLL_X2", AddPotions=2, RemoveCards=1, RewardsSteps=4,
+                Note="Requires LanternKey quest; HistoryCourse [S], 2 potions, 2 relic rolls; consecutive UNLOCK_CAGE/UNLOCK_CHEST keys" },
         },
         ["WATERLOGGED_SCRIPTORIUM"] = new[] {
-            // 源码: 血墨恒在; 两个付费附魔选项按金钱够不够换成LOCKED → 选项数1-3动态。
-            // B级修正: 金额 6/55/99 全是静态常量(GoldVar, WaterloggedScriptorium L30, IsAllowed同源), 触手笔原表-35错, 应-55
-            new EvOpt { Name="血墨(+上限)", Key="BLOODY_INK", MaxHp=6, Note="免费+6上限(静态)" },
-            new EvOpt { Name="触手笔(付费1卡Steady)", Key="TENTACLE_QUILL", Gold=-55, MinGold=55, UpgradeCards=1, Note="1卡附魔Steady, -55金静态" },
-            new EvOpt { Name="刺海绵(付费多卡Steady)", Key="PRICKLY_SPONGE", Gold=-99, MinGold=99, UpgradeCards=2, Note="2卡附魔Steady(CardsVar(2)), -99金静态" },
+            // Blood ink is always present; paid enchantments become LOCKED when unaffordable, giving a dynamic 1-3-option list.
+            // Grade B correction: 6/55/99 are fixed values (GoldVar, WaterloggedScriptorium L30 and IsAllowed); pen cost was wrongly 35, should be 55.
+            new EvOpt { Name="Blood ink (+max HP)", Key="BLOODY_INK", MaxHp=6, Note="Free +6 max HP (fixed)" },
+            new EvOpt { Name="Tentacle pen (pay to enchant 1 card with Steady)", Key="TENTACLE_QUILL", Gold=-55, MinGold=55, UpgradeCards=1, Note="Steady enchantment on 1 card; fixed cost 55 gold" },
+            new EvOpt { Name="Spiny sponge (pay to enchant multiple cards with Steady)", Key="PRICKLY_SPONGE", Gold=-99, MinGold=99, UpgradeCards=2, Note="Steady enchantment on 2 cards (CardsVar(2)); fixed cost 99 gold" },
         },
         ["WELCOME_TO_WONGOS"] = new[] {
-            // A级重排: 源码序 = [BARGAIN_BIN(-100,±L), FEATURED_ITEM(-200,±L), MYSTERY_BOX(±L), LEAVE](原表前两项互换)
-            new EvOpt { Name="打折区", Key="BARGAIN_BIN", Gold=-100, AddRelic="ROLL", MinGold=100, Note="Common档" },
-            new EvOpt { Name="主打商品", Key="FEATURED_ITEM", Gold=-200, AddRelic="ROLL", MinGold=200, Note="Rare档遗物" },
-            new EvOpt { Name="神秘盒子", Key="MYSTERY_BOX", Gold=-300, AddRelic="WONGOS_MYSTERY_TICKET", MinGold=300, Note="5战后开3遗物" },
-            new EvOpt { Name="离开", Key="LEAVE", UpgradeCards=-1, Note="惩罚: 随机降级1张已升级卡!" },
+            // Grade A reorder: [BARGAIN_BIN (-100, possibly locked), FEATURED_ITEM (-200, possibly locked), MYSTERY_BOX (possibly locked), LEAVE]; first two were swapped.
+            new EvOpt { Name="Discount section", Key="BARGAIN_BIN", Gold=-100, AddRelic="ROLL", MinGold=100, Note="Common tier" },
+            new EvOpt { Name="Featured item", Key="FEATURED_ITEM", Gold=-200, AddRelic="ROLL", MinGold=200, Note="Rare-tier relic" },
+            new EvOpt { Name="Mystery box", Key="MYSTERY_BOX", Gold=-300, AddRelic="WONGOS_MYSTERY_TICKET", MinGold=300, Note="Opens after 5 combats for 3 relics" },
+            new EvOpt { Name="Leave", Key="LEAVE", UpgradeCards=-1, Note="Penalty: randomly downgrade 1 upgraded card!" },
         },
         ["WELLSPRING"] = new[] {
-            new EvOpt { Name="装瓶", Key="BOTTLE", AddPotions=1, RewardsSteps=1 },
-            new EvOpt { Name="沐浴", Key="BATHE", RemoveCards=1, AddCurse="GUILTY", Note="移1自选但得Guilty" },
+            new EvOpt { Name="Bottle", Key="BOTTLE", AddPotions=1, RewardsSteps=1 },
+            new EvOpt { Name="Bathe", Key="BATHE", RemoveCards=1, AddCurse="GUILTY", Note="Remove 1 chosen card, but gain Guilty" },
         },
         ["WHISPERING_HOLLOW"] = new[] {
-            new EvOpt { Name="给钱", Key="GOLD", Gold=-35, AddPotions=2, RewardsSteps=2, MinGold=44, Note="费用35±9→26~44, MinGold=44保守" },
-            new EvOpt { Name="拥抱", Key="HUG", Hp=-9, TransformCards=1 },
+            new EvOpt { Name="Pay", Key="GOLD", Gold=-35, AddPotions=2, RewardsSteps=2, MinGold=44, Note="Cost 35 +/-9, or 26-44; MinGold=44 is conservative" },
+            new EvOpt { Name="Embrace", Key="HUG", Hp=-9, TransformCards=1 },
         },
         ["WOOD_CARVINGS"] = new[] {
-            // 源码序 = [BIRD, SNAKE(±LOCKED), TORUS](原表BIRD|TORUS|SNAKE, 有Key按名可容错, 仍重排以保下标兜底正确)。鸟/环=自选1张基础卡转化(等效删1加1, 价值高)
-            new EvOpt { Name="鸟(基础卡→啄击)", Key="BIRD", TransformCards=1, Bonus=1.0, Note="自选基础卡转Peck" },
-            new EvOpt { Name="蛇(附魔Slither)", Key="SNAKE", UpgradeCards=1, Note="1卡附魔; 无可附魔卡时LOCKED" },
-            new EvOpt { Name="环(基础卡→环形硬度)", Key="TORUS", TransformCards=1, Bonus=1.0, Note="自选基础卡转ToricToughness" },
+            // Source order: BIRD, SNAKE (possibly LOCKED), TORUS. Reorder old BIRD/TORUS/SNAKE for index fallback; bird/ring transform a chosen basic card (remove 1, add 1).
+            new EvOpt { Name="Bird (basic card -> Peck)", Key="BIRD", TransformCards=1, Bonus=1.0, Note="Transform a chosen basic card into Peck" },
+            new EvOpt { Name="Snake (Slither enchantment)", Key="SNAKE", UpgradeCards=1, Note="Enchant 1 card; LOCKED if none eligible" },
+            new EvOpt { Name="Ring (basic card -> ToricToughness)", Key="TORUS", TransformCards=1, Bonus=1.0, Note="Transform a chosen basic card into ToricToughness" },
         },
         ["ZEN_WEAVER"] = new[] {
-            // A级重排: 源码序 = [BREATHING(-50), EMOTIONAL(-125), ARACHNID(-250)](原表整体倒序)。注意: 三项的锁定变体共用同一个"LOCKED" key
-            new EvOpt { Name="呼吸法", Key="BREATHING_TECHNIQUES", Gold=-50, AddCards=2, MinGold=50, Note="2张Enlightenment" },
-            new EvOpt { Name="情绪觉察", Key="EMOTIONAL_AWARENESS", Gold=-125, RemoveCards=1, MinGold=125 },
-            new EvOpt { Name="蛛针灸", Key="ARACHNID_ACUPUNCTURE", Gold=-250, RemoveCards=2, MinGold=250 },
+            // Grade A reorder: [BREATHING (-50), EMOTIONAL (-125), ARACHNID (-250)]; old table was reversed. All three locked variants share LOCKED.
+            new EvOpt { Name="Breathing technique", Key="BREATHING_TECHNIQUES", Gold=-50, AddCards=2, MinGold=50, Note="2 Enlightenment cards" },
+            new EvOpt { Name="Emotional awareness", Key="EMOTIONAL_AWARENESS", Gold=-125, RemoveCards=1, MinGold=125 },
+            new EvOpt { Name="Spider acupuncture", Key="ARACHNID_ACUPUNCTURE", Gold=-250, RemoveCards=2, MinGold=250 },
         },
     };
 

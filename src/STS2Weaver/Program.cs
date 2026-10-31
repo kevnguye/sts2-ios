@@ -1,17 +1,17 @@
-// STS2Weaver — 把 Harmony 风格的 prefix/postfix 钩子静态织入 sts2.dll (iOS NativeAOT 无 JIT,不能运行时打补丁)
-// 用法: STS2Weaver <sts2.dll> <hooks.dll> <manifest.json> <output.dll>
+// STS2Weaver statically weaves Harmony-style prefix/postfix hooks into sts2.dll; iOS NativeAOT has no JIT for runtime patching.
+// Usage: STS2Weaver <sts2.dll> <hooks.dll> <manifest.json> <output.dll>
 //
 // manifest.json: { "patches": [ { "targetType", "targetMethod", "kind": "prefix"|"postfix",
 //                                 "hookType", "hookMethod" } ] }
 //
-// 语义(与 HarmonyLib 对齐,仅实现本项目补丁用到的子集):
-//   prefix 返回 void  → 原方法开头插入调用
-//   prefix 返回 bool  → 开头插入调用; 返回 false 则跳过原方法体直接 return
-//                       (返回值方法: 返回 __result 局部变量,未绑定 __result 时返回 default)
-//   postfix           → 每个 return 点插入调用(经单出口改写)
-//   钩子参数绑定: __instance → this; __result / ref __result → 返回值局部变量;
-//                 其余按参数名匹配原方法参数(支持 ref)
-// 不支持: transpiler / finalizer / __state / ___field 注入 / 泛型目标 / 重载目标 — 遇到即报错退出。
+// Semantics follow the subset of HarmonyLib used by this project:
+// A void prefix is called at the start of the original method.
+// A bool prefix runs at entry; false skips the original body and returns immediately.
+// For value-returning methods, return the __result local, or default if no __result is bound.
+// A postfix runs at each return via a shared exit epilogue.
+// Bind __instance to this and __result/ref __result to the return-value local.
+// Match other arguments to original parameter names, including ref parameters.
+// Unsupported: transpilers, finalizers, __state, ___field injection and generic targets. Ambiguous overloads require explicit parameters.
 
 using System.Text.Json;
 using Mono.Cecil;
@@ -37,25 +37,25 @@ var module = targetAsm.MainModule;
 
 var manifest = JsonSerializer.Deserialize<Manifest>(File.ReadAllText(manifestPath),
     new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-    ?? throw new InvalidOperationException("manifest 解析失败");
+    ?? throw new InvalidOperationException("Failed to parse manifest");
 
-// stripReadonly: 去掉指定静态字段的 initonly 标记(否则 .NET8 运行时反射 SetValue 会抛 FieldAccessException)
+// stripReadonly removes initonly from selected static fields, allowing reflection SetValue on .NET 8.
 foreach (var s in manifest.StripReadonly ?? new())
 {
-    var t = module.GetType(s.Type) ?? throw new InvalidOperationException($"stripReadonly 类型不存在: {s.Type}");
+    var t = module.GetType(s.Type) ?? throw new InvalidOperationException($"stripReadonly type not found: {s.Type}");
     foreach (var fname in s.Fields)
     {
         var f = t.Fields.FirstOrDefault(x => x.Name == fname)
-            ?? throw new InvalidOperationException($"stripReadonly 字段不存在: {s.Type}.{fname}");
+            ?? throw new InvalidOperationException($"stripReadonly field not found: {s.Type}.{fname}");
         f.IsInitOnly = false;
         Console.WriteLine($"[OK] strip-ro {s.Type}.{fname}");
     }
 }
 
-// patchConst: 替换指定类型(含嵌套状态机)方法体内的 int 字面量 — 用于 const 内联后无法反射改的值(如 AutoSlayer maxFloor=49)
+// patchConst replaces integer literals in the selected type and nested state machines; useful for inlined constants such as maxFloor=49.
 foreach (var pc in manifest.PatchConsts ?? new())
 {
-    var t = module.GetType(pc.Type) ?? throw new InvalidOperationException($"patchConst 类型不存在: {pc.Type}");
+    var t = module.GetType(pc.Type) ?? throw new InvalidOperationException($"patchConst type not found: {pc.Type}");
     int count = 0;
     var allTypes = new List<TypeDefinition> { t };
     allTypes.AddRange(t.NestedTypes);
@@ -72,19 +72,19 @@ foreach (var pc in manifest.PatchConsts ?? new())
                 Console.WriteLine($"[OK] patch-const {td.Name}.{m.Name}: {pc.FromInt}→{pc.ToInt}");
             }
         }
-    if (count == 0) throw new InvalidOperationException($"patchConst 没有命中任何 {pc.FromInt}: {pc.Type} ({pc.MethodContains})");
+    if (count == 0) throw new InvalidOperationException($"patchConst found no occurrences of {pc.FromInt}: {pc.Type} ({pc.MethodContains})");
 }
 
-// redirectCalls: 把指定命名空间下所有对某方法的调用改指到钩子(签名须一致) — 如 AutoSlay 的 Task.Delay → 1ms 版
+// redirectCalls replaces matching calls in a namespace with a same-signature hook, such as a 1ms Task.Delay variant.
 foreach (var rc in manifest.RedirectCalls ?? new())
 {
     var hookTypeDef = hooksAsm.MainModule.GetType(rc.HookType)
-        ?? throw new InvalidOperationException($"redirect 钩子类型不存在: {rc.HookType}");
+        ?? throw new InvalidOperationException($"Redirect hook type not found: {rc.HookType}");
     var hook = hookTypeDef.Methods.SingleOrDefault(m => m.Name == rc.HookMethod && m.IsStatic && m.IsPublic)
-        ?? throw new InvalidOperationException($"redirect 钩子方法不存在: {rc.HookMethod}");
+        ?? throw new InvalidOperationException($"Redirect hook method not found: {rc.HookMethod}");
     var hookRef = module.ImportReference(hook);
     int n = 0;
-    foreach (var td in module.GetTypes())   // 含嵌套类型(async 状态机)
+    foreach (var td in module.GetTypes())   // Include nested types such as async state machines.
     {
         if (!td.FullName.StartsWith(rc.NamespacePrefix)) continue;
         foreach (var m in td.Methods.Where(x => x.HasBody))
@@ -95,8 +95,8 @@ foreach (var rc in manifest.RedirectCalls ?? new())
                 bool match;
                 if (rc.GenericArg != null)
                 {
-                    // 泛型实例调用(如 Rng.NextItem<NEventOptionButton>): 按元方法+泛型实参匹配。
-                    // 实例方法→静态钩子: 栈型一致(this 变第一个参数), 调用方自查签名对齐。
+                    // Match generic instance calls, such as Rng.NextItem<NEventOptionButton>, by method and generic argument.
+                    // For instance-to-static redirection, the receiver becomes the first argument; callers must ensure compatible signatures.
                     match = mr is GenericInstanceMethod gim
                         && gim.ElementMethod.Name == rc.TargetMethod
                         && gim.ElementMethod.DeclaringType.FullName == rc.TargetType
@@ -105,19 +105,19 @@ foreach (var rc in manifest.RedirectCalls ?? new())
                 }
                 else
                 {
-                    // 参数类型逐个比对: 避免误伤重载(如 Delay(TimeSpan,ct) vs Delay(int,ct))
+                    // Compare parameter types to avoid changing unrelated overloads, such as Delay(TimeSpan,ct) versus Delay(int,ct).
                     match = mr.DeclaringType.FullName == rc.TargetType && mr.Name == rc.TargetMethod
                         && mr.Parameters.Count == hook.Parameters.Count
                         && mr.Parameters.Select((pp, i) => pp.ParameterType.FullName == hook.Parameters[i].ParameterType.FullName).All(x => x);
                 }
                 if (!match) continue;
                 ins.Operand = hookRef;
-                ins.OpCode = OpCodes.Call;   // 静态钩子必须用 call(callvirt 对静态方法是非法 IL)
+                ins.OpCode = OpCodes.Call;   // A static hook requires call; callvirt on a static method is invalid IL.
                 n++;
             }
     }
-    Console.WriteLine($"[OK] redirect {rc.TargetType}.{rc.TargetMethod}({string.Join(",", hook.Parameters.Select(x => x.ParameterType.Name))}) → {rc.HookMethod} x{n} (范围: {rc.NamespacePrefix})");
-    if (n == 0) throw new InvalidOperationException($"redirectCalls 没有命中任何调用: {rc.TargetType}.{rc.TargetMethod}");
+    Console.WriteLine($"[OK] redirect {rc.TargetType}.{rc.TargetMethod}({string.Join(",", hook.Parameters.Select(x => x.ParameterType.Name))}) → {rc.HookMethod} x{n} (scope: {rc.NamespacePrefix})");
+    if (n == 0) throw new InvalidOperationException($"redirectCalls matched no calls: {rc.TargetType}.{rc.TargetMethod}");
 }
 
 int woven = 0, failed = 0;
@@ -138,48 +138,48 @@ foreach (var p in manifest.Patches)
 
 if (failed > 0)
 {
-    Console.Error.WriteLine($"织入失败 {failed} 处,拒绝写出产物 (要么全对要么不出货)");
+    Console.Error.WriteLine($"Weaving failed at {failed} hooks; refusing to write partial output");
     return 1;
 }
 
 targetAsm.Write(outputPath);
-Console.WriteLine($"完成: {woven} 处织入 → {outputPath}");
+Console.WriteLine($"Complete: {woven} hooks woven → {outputPath}");
 return 0;
 
 void WeaveOne(PatchEntry p)
 {
     var targetType = module.GetType(p.TargetType)
-        ?? throw new InvalidOperationException($"目标类型不存在: {p.TargetType}");
+        ?? throw new InvalidOperationException($"Target type not found: {p.TargetType}");
     var candidates = targetType.Methods.Where(m => m.Name == p.TargetMethod).ToList();
-    if (candidates.Count == 0) throw new InvalidOperationException($"目标方法不存在: {p.TargetMethod}");
+    if (candidates.Count == 0) throw new InvalidOperationException($"Target method not found: {p.TargetMethod}");
     if (candidates.Count > 1 && p.TargetParams != null)
     {
-        // 按参数类型名消歧(匹配简单名或 FullName)
+        // Disambiguate overloads by simple or fully qualified parameter type names.
         candidates = candidates.Where(m =>
             m.Parameters.Count == p.TargetParams.Count &&
             m.Parameters.Select((pr, i) => pr.ParameterType.Name == p.TargetParams[i] || pr.ParameterType.FullName == p.TargetParams[i]).All(x => x)
         ).ToList();
     }
-    if (candidates.Count > 1) throw new InvalidOperationException($"目标方法有重载({candidates.Count}个),需 targetParams 消歧: {p.TargetMethod}");
+    if (candidates.Count > 1) throw new InvalidOperationException($"Target has {candidates.Count} overloads; specify targetParams: {p.TargetMethod}");
     var target = candidates[0];
-    if (target.HasGenericParameters) throw new InvalidOperationException("不支持泛型目标方法");
-    if (!target.HasBody) throw new InvalidOperationException("目标方法无方法体");
+    if (target.HasGenericParameters) throw new InvalidOperationException("Generic target methods are unsupported");
+    if (!target.HasBody) throw new InvalidOperationException("Target method has no body");
 
     var hookTypeDef = hooksAsm.MainModule.GetType(p.HookType)
-        ?? throw new InvalidOperationException($"钩子类型不存在: {p.HookType}");
+        ?? throw new InvalidOperationException($"Hook type not found: {p.HookType}");
     var hook = hookTypeDef.Methods.SingleOrDefault(m => m.Name == p.HookMethod && m.IsStatic && m.IsPublic)
-        ?? throw new InvalidOperationException($"钩子方法不存在或非 public static: {p.HookMethod}");
+        ?? throw new InvalidOperationException($"Hook method missing or not public static: {p.HookMethod}");
 
     bool isPrefix = p.Kind.Equals("prefix", StringComparison.OrdinalIgnoreCase);
     bool isPostfix = p.Kind.Equals("postfix", StringComparison.OrdinalIgnoreCase);
-    if (!isPrefix && !isPostfix) throw new InvalidOperationException($"未知 kind: {p.Kind}");
+    if (!isPrefix && !isPostfix) throw new InvalidOperationException($"Unknown kind: {p.Kind}");
 
     var hookReturnsBool = hook.ReturnType.MetadataType == MetadataType.Boolean;
     var hookReturnsVoid = hook.ReturnType.MetadataType == MetadataType.Void;
     if (isPrefix && !hookReturnsBool && !hookReturnsVoid)
-        throw new InvalidOperationException("prefix 钩子必须返回 bool 或 void");
+        throw new InvalidOperationException("Prefix hook must return bool or void");
     if (isPostfix && !hookReturnsVoid)
-        throw new InvalidOperationException("postfix 钩子必须返回 void");
+        throw new InvalidOperationException("Postfix hook must return void");
 
     var body = target.Body;
     body.InitLocals = true;
@@ -187,16 +187,16 @@ void WeaveOne(PatchEntry p)
     var il = body.GetILProcessor();
     var returnsValue = target.ReturnType.MetadataType != MetadataType.Void;
 
-    // __result 局部变量(按需创建)
+    // Create the __result local on demand.
     VariableDefinition resultVar = null;
     VariableDefinition EnsureResultVar()
     {
-        if (!returnsValue) throw new InvalidOperationException("目标方法返回 void,钩子不能绑定 __result");
+        if (!returnsValue) throw new InvalidOperationException("Cannot bind __result on a void target");
         resultVar ??= AddLocal(body, target.ReturnType);
         return resultVar;
     }
 
-    // 生成钩子实参加载指令
+    // Generate instructions to load hook arguments.
     List<Instruction> BuildArgLoads(bool inPostfixEpilogue)
     {
         var loads = new List<Instruction>();
@@ -205,7 +205,7 @@ void WeaveOne(PatchEntry p)
             var name = hp.Name;
             if (name == "__instance")
             {
-                if (target.IsStatic) throw new InvalidOperationException("静态目标方法无 __instance");
+                if (target.IsStatic) throw new InvalidOperationException("A static target has no __instance");
                 loads.Add(il.Create(OpCodes.Ldarg_0));
             }
             else if (name == "__result")
@@ -214,14 +214,14 @@ void WeaveOne(PatchEntry p)
                 if (hp.ParameterType.IsByReference) loads.Add(il.Create(OpCodes.Ldloca, v));
                 else
                 {
-                    if (!inPostfixEpilogue) throw new InvalidOperationException("prefix 的 __result 必须是 ref");
+                    if (!inPostfixEpilogue) throw new InvalidOperationException("A prefix __result parameter must be ref");
                     loads.Add(il.Create(OpCodes.Ldloc, v));
                 }
             }
             else
             {
                 var op = target.Parameters.FirstOrDefault(x => x.Name == name)
-                    ?? throw new InvalidOperationException($"钩子参数 '{name}' 在目标方法中找不到同名参数");
+                    ?? throw new InvalidOperationException($"Hook parameter '{name}' has no matching target parameter");
                 loads.Add(hp.ParameterType.IsByReference && !op.ParameterType.IsByReference
                     ? il.Create(OpCodes.Ldarga, op)
                     : il.Create(OpCodes.Ldarg, op));
@@ -239,14 +239,14 @@ void WeaveOne(PatchEntry p)
         seq.Add(il.Create(OpCodes.Call, hookRef));
         if (hookReturnsBool)
         {
-            seq.Add(il.Create(OpCodes.Brtrue, first)); // true → 继续原方法
+            seq.Add(il.Create(OpCodes.Brtrue, first)); // true: continue into the original method.
             if (returnsValue) seq.Add(il.Create(OpCodes.Ldloc, resultVar ?? EnsureResultVar()));
             seq.Add(il.Create(OpCodes.Ret));
         }
         foreach (var ins in seq) il.InsertBefore(first, ins);
-        // 注意: 原有跳转若指向 first 会绕过 prefix — 语义正确(prefix 只在入口执行一次)
+        // Existing branches targeting first bypass the prefix correctly: the prefix runs only once at entry.
     }
-    else // postfix: 单出口改写
+    else // Postfix: rewrite to a shared exit.
     {
         var rets = body.Instructions.Where(i => i.OpCode == OpCodes.Ret).ToList();
         if (body.HasExceptionHandlers)
@@ -254,9 +254,9 @@ void WeaveOne(PatchEntry p)
             foreach (var h in body.ExceptionHandlers)
                 foreach (var r in rets)
                     if (InRange(body, r, h.TryStart, h.TryEnd) || InRange(body, r, h.HandlerStart, h.HandlerEnd))
-                        throw new InvalidOperationException("postfix 目标的 return 位于 try/catch 内,当前不支持 — 需要 leave 语义,报出来再处理");
+                        throw new InvalidOperationException("Postfix target returns inside try/catch; leave semantics are required and currently unsupported");
         }
-        // 尾部构建 epilogue: [stloc result] [args] call hook [ldloc result] ret
+        // Append epilogue: [stloc result] [args] call hook [ldloc result] ret.
         var epi = new List<Instruction>();
         if (returnsValue) { EnsureResultVar(); epi.Add(il.Create(OpCodes.Stloc, resultVar)); }
         epi.AddRange(BuildArgLoads(inPostfixEpilogue: true));
@@ -287,10 +287,10 @@ static bool InRange(MethodBody body, Instruction ins, Instruction start, Instruc
 }
 
 record Manifest(List<PatchEntry> Patches, List<StripEntry>? StripReadonly = null, List<ConstEntry>? PatchConsts = null, List<RedirectEntry>? RedirectCalls = null);
-// GenericArg: 可选 — 匹配泛型实例调用(如 NextItem<NEventOptionButton>), 按泛型实参全名过滤
+// GenericArg is optional: match a generic call such as NextItem<NEventOptionButton> by fully qualified argument type.
 record RedirectEntry(string NamespacePrefix, string TargetType, string TargetMethod, string HookType, string HookMethod, string? GenericArg = null);
 record StripEntry(string Type, List<string> Fields);
-// MethodContains: 匹配方法名或嵌套类型名(async 状态机如 <PlayRunAsync>d__N)
+// MethodContains matches method or nested-type names, including async state machines such as <PlayRunAsync>d__N.
 record ConstEntry(string Type, int FromInt, int ToInt, string? MethodContains = null);
-// TargetParams: 可选, 重载消歧用 — 按参数类型名(FullName 或简单名)匹配。null=方法名唯一时直接用。
+// TargetParams optionally disambiguates overloads by simple/full parameter type names; null requires a unique method name.
 record PatchEntry(string TargetType, string TargetMethod, string Kind, string HookType, string HookMethod, List<string>? TargetParams = null);

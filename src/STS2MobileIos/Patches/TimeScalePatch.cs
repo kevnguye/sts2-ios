@@ -19,31 +19,31 @@ public static class TimeScalePatch
         try
         {
             Engine.TimeScale = TARGET_SCALE;
-            PatchHelper.Log($"[TimeScale] 全局时间缩放设为 {TARGET_SCALE}x");
+            PatchHelper.Log($"[TimeScale] Global time scale set to {TARGET_SCALE}x");
             PerformanceDiagnostics.Start();
         }
         catch (Exception e)
         {
-            PatchHelper.Log($"[TimeScale] 设置失败: {e.Message}");
+            PatchHelper.Log($"[TimeScale] Setting time scale failed: {e.Message}");
         }
         try
         {
-            // 内存额度自检(诊断用, 默认关闭): 容器 Documents 放一个 memcheck_on 文件即开启,
-            // 删除即关闭(文件App可控, 无需进游戏)。开启时启动记录一行到 memcheck.txt。
-            // os_proc_available_memory = 系统还允许本进程用多少内存;
-            // 有 increased-memory-limit 权限 ≈ 7GB+, 没有 ≈ 3GB — 签名是否保住权限一眼可判。
+            // Optional memory-budget diagnostic: create memcheck_on in the app's Documents directory to enable it.
+            // Delete it to disable logging; the Files app can manage it without launching the game. Append one startup line to memcheck.txt.
+            // os_proc_available_memory reports the additional memory the process may currently allocate.
+            // The original author observed ~7GB+ with increased-memory-limit versus ~3GB without; actual budgets vary by device and state.
             var docs = OS.GetUserDataDir();
             if (File.Exists(Path.Combine(docs, "memcheck_on")))
             {
                 var line =
-                    $"{DateTime.Now:MM-dd HH:mm:ss} 剩余内存额度 {OsProcAvailableMemory() / 1048576} MB";
+                    $"{DateTime.Now:MM-dd HH:mm:ss} Available memory budget: {OsProcAvailableMemory() / 1048576} MB";
                 PatchHelper.Log($"[MemCheck] {line}");
                 File.AppendAllText(Path.Combine(docs, "memcheck.txt"), line + "\n");
             }
         }
         catch (Exception e)
         {
-            PatchHelper.Log($"[MemCheck] 自检失败: {e.Message}");
+            PatchHelper.Log($"[MemCheck] Diagnostic failed: {e.Message}");
         }
     }
 
@@ -62,7 +62,7 @@ public static class TimeScalePatch
         }
         catch (Exception e)
         {
-            PatchHelper.Log($"[TimeScale] HitStop 叠加失败: {e.Message}");
+            PatchHelper.Log($"[TimeScale] Applying hit-stop scale failed: {e.Message}");
         }
         return false;
     }
