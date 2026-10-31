@@ -42,16 +42,24 @@ TEMPLATES="$HOME/Library/Application Support/Godot/export_templates/4.5.1.stable
 [ -d "$STS2_IOS_LIBS_DIR/libspine_godot.ios.template_release.framework" ] || fail "Spine iOS 库缺失于 $STS2_IOS_LIBS_DIR（自备，见 README）"
 [ -d "$STS2_IOS_LIBS_DIR/libGodotFmod.ios.template_release.xcframework" ] || fail "FMOD iOS 库缺失于 $STS2_IOS_LIBS_DIR（自备）"
 [ -f "$STS2_FMOD_STATIC_DIR/libfmod_iphoneos.a" ] || fail "FMOD 静态库缺失于 $STS2_FMOD_STATIC_DIR（自备）"
+[ -f "$STS2_FMOD_STATIC_DIR/libfmodstudio_iphoneos.a" ] || fail "FMOD Studio 静态库缺失于 $STS2_FMOD_STATIC_DIR"
+[ -f "$GAME_DATA/sts2.dll" ] && [ -f "$GAME_DATA/GodotSharp.dll" ] || fail "游戏托管程序集缺失"
+# References stay local and ignored. Read the installed game without modifying it.
+mkdir -p "$ROOT/game-refs"
+cp "$GAME_DATA/sts2.dll" "$GAME_DATA/GodotSharp.dll" "$ROOT/game-refs/" || fail "无法准备本地游戏引用"
 ok "前置齐全"
 
 step "1/6 重新织入最新 sts2.dll（补丁 + 游戏原始程序集）"
 cd "$ROOT" || fail "cd 失败"
-cp "$GAME_DATA/sts2.dll" "$WORK/sts2.dll" || fail "拷贝游戏 sts2.dll 失败"
+# Read the original assembly in place so Cecil can resolve its sibling DLLs.
+# The weaver opens it read-only and writes only to the separate WOVEN path.
 dotnet build src/STS2MobileIos -c Release -o "$WORK/mobilepatch-out" >"$WORK/patch-build.log" 2>&1 \
   || fail "补丁库编译失败，见 $WORK/patch-build.log"
 dotnet run --project src/STS2Weaver -c Release -- \
-  "$WORK/sts2.dll" "$WORK/mobilepatch-out/STS2MobileIos.dll" \
+  "$GAME_DATA/sts2.dll" "$WORK/mobilepatch-out/STS2MobileIos.dll" \
   src/STS2MobileIos/manifest.json "$WOVEN" 2>&1 | tee "$WORK/weave.log" | grep -E "\[FAIL\]|完成"
+WEAVERC=${PIPESTATUS[0]}
+[ "$WEAVERC" = "0" ] || fail "织入器退出码 $WEAVERC，见 $WORK/weave.log"
 grep -q "完成" "$WORK/weave.log" || fail "织入失败，见 $WORK/weave.log"
 ok "织入完成: $WOVEN"
 
@@ -75,13 +83,8 @@ DEPCOUNT=$(ls "$PREBUILT/deps" | wc -l | tr -d ' ')
 ok "依赖组装完成: $DEPCOUNT 个第三方托管程序集（按框架清单精确滤除）"
 echo "  保留: $(ls "$PREBUILT/deps" | tr '\n' ' ')"
 
-step "3/6 放置 GDExtension iOS 库到导出工程 addons/"
-ADDONS="$EXPORT_DIR/addons"
-mkdir -p "$ADDONS/spine/ios" "$ADDONS/fmod/libs/ios"
-cp -R "$STS2_IOS_LIBS_DIR/libspine_godot.ios.template_release.framework" "$ADDONS/spine/ios/"
-cp -R "$STS2_IOS_LIBS_DIR/libGodotFmod.ios.template_release.xcframework" "$ADDONS/fmod/libs/ios/"
-cp "$STS2_FMOD_STATIC_DIR/"libfmod{,studio}_iphoneos.a "$ADDONS/fmod/libs/ios/" 2>/dev/null
-ok "GDExtension 库就位"
+step "3/6 第三方库将复制到私有导出目录（不改动 SDK 原件）"
+ok "iOS 库路径已验证；第 5 步准备私有导出驱动"
 
 step "4/6 dotnet publish（NativeAOT 预编译织入程序集 → sts2.framework）"
 cd "$EXPORT_DIR" || fail "cd 失败"
@@ -98,22 +101,23 @@ ok "sts2.framework 预编译完成: $(du -h "$PUB_DIR/sts2.dylib" | cut -f1) arm
 
 step "5/6 Godot 导出 iOS 工程"
 mkdir -p "$EXPORT_DIR/build"
+DRIVER=$(python3 "$ROOT/tools/prepare_ios_export.py" \
+  --repo "$ROOT" --game "$GAME" --libraries "$STS2_IOS_LIBS_DIR" \
+  --fmod "$STS2_FMOD_STATIC_DIR" --team "$STS2_TEAM_ID" --bundle "$STS2_BUNDLE_ID") \
+  || fail "私有导出驱动准备失败"
 # 导出 Xcode 工程（--main-pack 是运行时参数不是导出参数,不能放这里;
 # 游戏内容通过 step 5.5 替换 pck 进入应用包）
-"$GODOT" --headless --path "$EXPORT_DIR" \
+"$GODOT" --headless --path "$DRIVER" \
   --export-release "iOS" "$EXPORT_DIR/build/StS2.ipa" 2>&1 | tee "$WORK/export.log" | tail -8
+EXPORTRC=${PIPESTATUS[0]}
+[ "$EXPORTRC" = "0" ] || fail "Godot 导出失败 (退出码 $EXPORTRC)，见 $WORK/export.log"
 [ -d "$EXPORT_DIR/build/StS2.xcodeproj" ] || fail "Godot 未生成 Xcode 工程，见 $WORK/export.log"
 ok "Xcode 工程已生成"
 
-step "5.15/6 修 pbxproj 签名（Godot 每次导出重生成工程: Distribution→Development + 钉死团队）"
-PBX="$EXPORT_DIR/build/StS2.xcodeproj/project.pbxproj"
-sed -i '' 's/Apple Distribution/Apple Development/g' "$PBX"
-sed -i '' "s/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = ${STS2_TEAM_ID};/g" "$PBX"
-# bundle id 从 config 钉进工程（否则用的是 export_presets.cfg 里的占位 com.yourname.sts2，
-# 会与 config 的 STS2_BUNDLE_ID 不符，导致 push-pck/存档脚本对错容器）
-sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ${STS2_BUNDLE_ID};/g" "$PBX"
-grep -q "Apple Distribution" "$PBX" && fail "pbxproj 仍含 Apple Distribution"
-ok "pbxproj 签名+bundle 已修 (Development / $STS2_TEAM_ID / $STS2_BUNDLE_ID)"
+step "5.15/6 配置 Development 签名、原生音频链接与 Increased Memory Limit"
+python3 "$ROOT/tools/finalize_ios_project.py" "$EXPORT_DIR/build" \
+  --team "$STS2_TEAM_ID" --bundle "$STS2_BUNDLE_ID" || fail "Xcode 工程配置失败"
+ok "Xcode 工程配置完成"
 
 step "5.2/6 注入 FMOD 空插件实现到 dummy.cpp（Godot 每次导出重生成 dummy.cpp,必补）"
 # FMOD 静态库需 load_all_fmod_plugins 符号(正常由 Godot FMOD 编辑器插件生成,命令行导出没触发)。
@@ -165,32 +169,18 @@ GOTSENT=$(python3 "$ROOT/tools/pck_ls.py" "$EXPORT_DIR/build/StS2.pck" ls 2>/dev
 [ "$GOTSENT" = "0" ] || fail "pck 仍含 sentry: $GOTSENT"
 ok "游戏内容包就位: $(du -h "$EXPORT_DIR/build/StS2.pck"|cut -f1), $GOTCS 脚本占位, 0 sentry"
 
-step "6/6 签名 + 装机（免费账号必须走 Xcode GUI,命令行 xcodebuild 会 No Accounts）"
+step "6/6 Open Xcode to sign and install"
 cat <<GUIDE
-────────────────────────────────────────────────────────────────────
-命令行部分已完成:织入/AOT/导出/pck三连/FMOD注入/entitlement 全部就绪。
-最后签名装机因免费账号限制必须 Xcode GUI(命令行看不到账号会话)。两条路:
+Export ready: ios-export/build/StS2.xcodeproj
 
-【A. 首次/游戏更新(需编译 dummy.cpp + 签名)——Xcode GUI】
- 1. Xcode 打开  ios-export/build/StS2.xcodeproj
- 2. 选 StS2 target → Signing & Capabilities:
-    - Team 选你的账号, 勾 Automatically manage signing
-    - 点 "+ Capability" → 搜 "Increased Memory" → 双击加入(治本:突破内存上限)
- 3. 顶部选你的 iPhone → 点 ▶ Run(会编译+签名+装机)
- 4. 装好后如需迁移旧存档: Xcode Devices窗口 → Replace Container
+1. Open the project in Xcode and select your iPhone as the destination.
+2. Under Signing & Capabilities, select your own Team and automatic signing.
+3. Confirm Increased Memory Limit is present and supported by your profile.
+4. Choose Product > Run. Complete Apple login or agreements yourself if prompted.
+5. Install over the existing app using the same bundle ID to preserve its saves.
 
-【B. 仅换补丁不动游戏内容(增量,已构建过一次后)——命令行】
- 已构建的 .app 在 DerivedData;换新 sts2.dylib 到 Frameworks/sts2.framework/sts2,
- codesign -f -s "\$STS2_SIGN_IDENTITY"
-   --generate-entitlement-der --entitlements "$ENT" <各framework 再 .app>
- xcrun devicectl device install app --device "\$STS2_DEVICE_UDID" <.app>
- ⚠️ 覆盖安装,绝不 uninstall(会清存档!)  ⚠️ entitlement 版仍需先有含该entitlement的profile
- (增量装机可直接用 deploy-slim.sh)
-
-产物就绪:
-  pck: ios-export/build/StS2.pck (含脚本占位+移sentry)
-  AOT: ios-export/.godot/mono/temp/bin/ExportRelease/ios-arm64/publish/sts2.dylib
-  entitlements: $ENT (含 increased-memory-limit)
-────────────────────────────────────────────────────────────────────
+Do not uninstall or replace the app container. Keep game packs, app builds and
+signing files private. See docs/BEGINNER_GUIDE.md for the menu paths,
+renewal guidance and the Quick Start assistant prompt.
 GUIDE
-ok "构建准备完成,按上方 Xcode GUI 步骤完成签名装机"
+ok "Export complete; signing and physical-device testing are separate steps"

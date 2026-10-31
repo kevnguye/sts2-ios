@@ -35,15 +35,15 @@ public static class QuickRestartPatch
     // 加"一键重开"按钮 + 6 格存档位快照(时光回溯)。
     public static void ReadyPostfix(object __instance)
     {
-        var saveBtn = AddRestartButton(__instance);
-        if (saveBtn == null)
-            return;
         try
         {
             var container = (Control)PatchHelper.Field(((Node)__instance).GetType(), "_buttonContainer")
                 ?.GetValue(__instance);
-            // Snapshot / rollback ("time-travel SL"): adds six buttons right below
-            // Restart Room — Save Slot 1/2/3 and Load Slot 1/2/3.
+            if (container == null) return;
+            if (ExtraOptions.Enabled(ExtraFeature.RestartRoom)) AddRestartButton(__instance);
+            else RemoveButton(container, ButtonName);
+            var saveBtn = (Node)PatchHelper.Field(((Node)__instance).GetType(), "_saveAndQuitButton")
+                ?.GetValue(__instance);
             SnapshotPatch.AddButtons(container, saveBtn);
         }
         catch (Exception ex)
@@ -55,12 +55,20 @@ public static class QuickRestartPatch
     // postfix on NPauseMenu._Ready (桌面精简版): 只加"一键重开", 不带快照(菜单更干净)。
     public static void RestartOnlyPostfix(object __instance)
     {
-        AddRestartButton(__instance);
+        AddRestartButton(__instance, false);
+    }
+
+    private static void RemoveButton(Node parent, string name)
+    {
+        var child = parent.GetNodeOrNull(name);
+        if (child == null) return;
+        parent.RemoveChild(child);
+        child.QueueFree();
     }
 
     // 复制原生"保存并退出"按钮(样式/脚本自动一致), 改名改文案, 接一键重开。
     // 返回原 saveBtn(供快照版复用), 失败/已存在返回 null。
-    private static Node AddRestartButton(object __instance)
+    private static Node AddRestartButton(object __instance, bool respectExtras = true)
     {
         try
         {
@@ -86,6 +94,7 @@ public static class QuickRestartPatch
             // and scene instantiation(8) => flags = 14.
             var dup = saveBtn.Duplicate(14);
             dup.Name = ButtonName;
+            dup.SetMeta("mobile_extra_restart", respectExtras);
 
             var label = dup.GetNodeOrNull<MegaLabel>("Label");
             if (label != null)
@@ -125,6 +134,8 @@ public static class QuickRestartPatch
     // Released signal handler (ReleasedEventHandler => one NClickableControl arg).
     private static void OnRestartPressed(NClickableControl _)
     {
+        if (_.HasMeta("mobile_extra_restart") && _.GetMeta("mobile_extra_restart").AsBool() &&
+            !ExtraOptions.Enabled(ExtraFeature.RestartRoom)) return;
         TaskHelper.RunSafely(ReloadCurrentRunAsync());
     }
 

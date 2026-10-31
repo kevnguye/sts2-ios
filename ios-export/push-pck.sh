@@ -18,6 +18,8 @@ source "$SCRIPT_DIR/config.sh"
 
 DEV="$STS2_DEVICE_UDID"
 BUNDLE="$STS2_BUNDLE_ID_SIGNED"
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/sts2pck.XXXXXX") || exit 1
+trap 'rm -rf "$STAGE"' EXIT
 PCK="${1:-$SCRIPT_DIR/build/StS2.pck}"      # 默认用 build-ios.sh 产出的 pck；也可传路径覆盖
 fail(){ echo "❌ $1"; exit 1; }
 
@@ -31,8 +33,8 @@ echo "▶ 推送素材包 $(du -h "$PCK" | cut -f1) → Documents/StS2.pck  (USB
 # 用 devicectl 拷进 App 沙盒文档区。file→file，目标写全路径。
 if ! xcrun devicectl device copy to --device "$DEV" \
       --domain-type appDataContainer --domain-identifier "$BUNDLE" \
-      --source "$PCK" --destination "Documents/StS2.pck" 2>/tmp/pushpck.err; then
-  cat /tmp/pushpck.err >&2
+      --source "$PCK" --destination "Documents/StS2.pck" 2>"$STAGE/pushpck.err"; then
+  cat "$STAGE/pushpck.err" >&2
   echo "── 若上面报容器不存在: 手机上先用 SideStore(或 Xcode) 把瘦身 App 装上再来。"
   echo "── 若 devicectl 拷贝不通(设备/配对问题)，可改用 Finder: 连线 → 手机 → 文件 →"
   echo "   找到该 App → 把 StS2.pck 拖进它的文档区(文件名须为 StS2.pck)。"

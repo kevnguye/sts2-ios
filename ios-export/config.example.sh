@@ -39,3 +39,9 @@ STS2_FMOD_STATIC_DIR="$HOME/sts2-ios-userlibs/fmod-ios/lib"
 # ── 存档同步（可选，仅 sts2_save_sync.sh 用）──
 # 你的 SteamID64（电脑存档目录名）。查询: 游戏内或 steamid.io。
 STS2_STEAM_ID=""
+# Divergent phone saves are retained as candidates by default, never mirrored with --delete.
+# Set to 1 only after reviewing the candidate and choosing the phone as authoritative.
+STS2_ALLOW_PHONE_PULL=0
+# Likewise, scheduled desktop-to-phone sends require an explicit choice.
+# push-save.sh remains the manual, deliberate desktop-to-phone transfer command.
+STS2_ALLOW_DESKTOP_PUSH=0

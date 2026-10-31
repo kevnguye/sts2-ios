@@ -1,5 +1,7 @@
 using System;
 using System.Reflection;
+using System.IO;
+using Godot;
 
 namespace STS2MobileIos;
 
@@ -9,6 +11,28 @@ namespace STS2MobileIos;
 // return private fields declared on base classes).
 public static class PatchHelper
 {
+    private static string _diagnosticsPath;
+    private static bool _diagnosticsChecked;
+    private static readonly object LogLock = new();
+    public static bool DiagnosticsEnabled
+    {
+        get
+        {
+            if (!_diagnosticsChecked)
+            {
+                try
+                {
+                    string root = OS.GetUserDataDir();
+                    string flag = Path.Combine(root, "mobile_diagnostics_on");
+                    if (File.Exists(flag) && File.ReadAllText(flag).Trim() == "1")
+                        _diagnosticsPath = Path.Combine(root, "mobile_diagnostics.log");
+                    _diagnosticsChecked = true;
+                }
+                catch { }
+            }
+            return _diagnosticsPath != null;
+        }
+    }
     private const BindingFlags AllFlags =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
 
@@ -37,5 +61,16 @@ public static class PatchHelper
     public static void Log(string msg)
     {
         Console.Error.WriteLine($"[STS2MobileIos] {msg}");
+        if (!DiagnosticsEnabled) return;
+        try
+        {
+            lock (LogLock)
+            {
+                if (File.Exists(_diagnosticsPath) && new FileInfo(_diagnosticsPath).Length > 1024 * 1024)
+                    File.Move(_diagnosticsPath, _diagnosticsPath + ".previous", true);
+                File.AppendAllText(_diagnosticsPath, $"{DateTime.UtcNow:O} {msg}\n");
+            }
+        }
+        catch { } // Diagnostics must never interrupt gameplay or save operations.
     }
 }

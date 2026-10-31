@@ -19,6 +19,29 @@ namespace STS2MobileIos.Patches;
 // duplicate-guard makes a double call idempotent — it updates the existing label).
 public static class CardAdvisorPatch
 {
+    private static readonly List<WeakReference<Node>> Screens = new();
+
+    public static void OptionsChanged()
+    {
+        foreach (var entry in Screens.ToArray())
+            if (entry.TryGetTarget(out var screen) && GodotObject.IsInstanceValid(screen) && screen.IsInsideTree())
+            {
+                if (ExtraOptions.Enabled(ExtraFeature.CardSuggestions)) ScheduleRefresh(screen);
+                else RemoveAdvisor(screen);
+            }
+    }
+
+    private static void RemoveAdvisor(Node screen)
+    {
+        foreach (string name in new[] { "AdvisorTimer", "AdvisorLayer" })
+        {
+            var child = screen.GetNodeOrNull(name);
+            if (child == null) continue;
+            if (child is Godot.Timer timer) timer.Stop();
+            screen.RemoveChild(child);
+            child.QueueFree();
+        }
+    }
     // postfix on NCardRewardSelectionScreen.RefreshOptions (populates the reward card
     // row; fires on initial display and reroll).
     public static void RefreshOptionsPostfix(object __instance) => ScheduleRefresh(__instance);
@@ -47,7 +70,7 @@ public static class CardAdvisorPatch
     // one (the per-screen hooks above remain for their extra refresh timing, e.g. reroll).
     public static void OverlayPushPostfix(object screen)
     {
-        try { if (screen != null) Trace($"overlay: {screen.GetType().Name}"); } catch { }
+        try { if (ExtraOptions.Enabled(ExtraFeature.CardSuggestions) && screen != null) Trace($"overlay: {screen.GetType().Name}"); } catch { }
         ScheduleRefresh(screen);
     }
 
@@ -59,6 +82,11 @@ public static class CardAdvisorPatch
     // time. Refresh reuses/hides labels, so re-running is cheap and never flickers.
     private static void ScheduleRefresh(object screenObj)
     {
+        if (screenObj is not Node candidate) return;
+        Screens.RemoveAll(entry => !entry.TryGetTarget(out var node) || !GodotObject.IsInstanceValid(node));
+        if (!Screens.Exists(entry => entry.TryGetTarget(out var node) && node == candidate))
+            Screens.Add(new WeakReference<Node>(candidate));
+        if (!ExtraOptions.Enabled(ExtraFeature.CardSuggestions)) return;
         Refresh(screenObj);
         try
         {
@@ -69,6 +97,11 @@ public static class CardAdvisorPatch
                 screen.AddChild(timer);
                 timer.Timeout += () =>
                 {
+                    if (!ExtraOptions.Enabled(ExtraFeature.CardSuggestions))
+                    {
+                        if (GodotObject.IsInstanceValid(screen)) RemoveAdvisor(screen);
+                        return;
+                    }
                     if (GodotObject.IsInstanceValid(screen) && screen.IsInsideTree())
                         Refresh(screen);
                 };
@@ -93,6 +126,7 @@ public static class CardAdvisorPatch
 
     private static void Refresh(object screenObj)
     {
+        if (!ExtraOptions.Enabled(ExtraFeature.CardSuggestions)) return;
         try
         {
             var screen = screenObj as Node;

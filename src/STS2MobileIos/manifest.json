@@ -258,6 +258,48 @@
       "kind": "postfix",
       "hookType": "STS2MobileIos.Patches.CardAdvisorPatch",
       "hookMethod": "OverlayPushPostfix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NSettingsScreen",
+      "targetMethod": "LocalizeLabels",
+      "kind": "postfix",
+      "hookType": "STS2MobileIos.Patches.ExtrasSettingsPatch",
+      "hookMethod": "SettingsLabelsPostfix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NRunTimerTickbox",
+      "targetMethod": "_Ready",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.ExtrasSettingsPatch",
+      "hookMethod": "TickboxReadyPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NRunTimerTickbox",
+      "targetMethod": "SetFromSettings",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.ExtrasSettingsPatch",
+      "hookMethod": "SetFromSettingsPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NRunTimerTickbox",
+      "targetMethod": "OnTick",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.ExtrasSettingsPatch",
+      "hookMethod": "TickPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NRunTimerTickbox",
+      "targetMethod": "OnUntick",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.ExtrasSettingsPatch",
+      "hookMethod": "UntickPrefix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NRunTimerHoverTip",
+      "targetMethod": "_Ready",
+      "kind": "postfix",
+      "hookType": "STS2MobileIos.Patches.ExtrasSettingsPatch",
+      "hookMethod": "HoverTipReadyPostfix"
     }
   ]
 }
