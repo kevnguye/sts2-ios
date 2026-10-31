@@ -300,6 +300,20 @@
       "kind": "postfix",
       "hookType": "STS2MobileIos.Patches.ExtrasSettingsPatch",
       "hookMethod": "HoverTipReadyPostfix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NSettingsScreen",
+      "targetMethod": "LocalizeLabels",
+      "kind": "postfix",
+      "hookType": "STS2MobileIos.Patches.ScreenMarginsPatch",
+      "hookMethod": "SettingsLabelsPostfix"
+    },
+    {
+      "targetType": "MegaCrit.Sts2.Core.Nodes.Screens.Settings.NMasterVolumeSlider",
+      "targetMethod": "_Ready",
+      "kind": "prefix",
+      "hookType": "STS2MobileIos.Patches.ScreenMarginsPatch",
+      "hookMethod": "SliderReadyPrefix"
     }
   ]
 }

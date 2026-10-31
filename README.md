@@ -61,3 +61,5 @@ every use. Obtain the rights required for your use and do not redistribute a
 compiled game or its asset pack.
 
 [Archived Chinese reference](README_ZH.md) · [Technical background](docs/DESIGN.md)
+
+[Audio and screen-margin update / device verification](docs/AUDIO_SCREEN_MARGINS.md)

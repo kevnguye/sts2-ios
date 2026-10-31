@@ -21,6 +21,7 @@ public static class TimeScalePatch
             Engine.TimeScale = TARGET_SCALE;
             PatchHelper.Log($"[TimeScale] 全局时间缩放设为 {TARGET_SCALE}x");
             PerformanceDiagnostics.Start();
+            ScreenMargins.Start();
         }
         catch (Exception e)
         {
