@@ -21,6 +21,7 @@ public static class TimeScalePatch
             Engine.TimeScale = TARGET_SCALE;
             PatchHelper.Log($"[TimeScale] Global time scale set to {TARGET_SCALE}x");
             PerformanceDiagnostics.Start();
+            ScreenMargins.Start();
         }
         catch (Exception e)
         {

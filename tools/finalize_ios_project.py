@@ -3,6 +3,7 @@
 import argparse
 import plistlib
 import re
+import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -23,7 +24,14 @@ def finalize(build, team, bundle):
             else ' -framework AudioToolbox -framework AVFoundation') + '";', text)
     if '-framework AudioToolbox -framework AVFoundation' not in text:
         raise ValueError('Unexpected linker settings; generated Xcode format may have changed')
+    # Compile the generated bootstrap as Objective-C++ for the iOS audio session.
+    text, count = re.subn(r'(?:lastKnownFileType|explicitFileType) = sourcecode.cpp.(?:cpp|objcpp)(; path = dummy.cpp;)',
+                          r'explicitFileType = sourcecode.cpp.objcpp\1', text)
+    if count == 0 and 'sourcecode.cpp.objcpp; path = dummy.cpp;' not in text:
+        raise ValueError('Missing generated bootstrap file reference')
     pbx.write_text(text)
+    shutil.copyfile(Path(__file__).resolve().parents[1] / 'ios-export/native/MobileAudio.h',
+                    build / 'StS2/MobileAudio.h')
     dummy = build / 'StS2/dummy.cpp'
     code = dummy.read_text()
     if 'register_dynamic_symbol((char *)"fmod_library_init"' not in code:
@@ -37,6 +45,9 @@ unsigned int *load_all_fmod_plugins(void *, unsigned int *count) {
     return nullptr;
 }
 ''')
+    code = dummy.read_text()
+    if '#include "MobileAudio.h"' not in code:
+        dummy.write_text(code + '\n#include "MobileAudio.h"\n')
     ent = build / 'StS2/StS2.entitlements'
     with ent.open('rb') as stream: values = plistlib.load(stream)
     values['get-task-allow'] = True

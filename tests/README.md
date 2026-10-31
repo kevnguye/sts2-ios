@@ -41,3 +41,19 @@ Check checkbox focus/navigation and the native explanation tooltips on the phone
 7. Disconnect during a payload upload: the sender must fail without publishing completion. Retry with both games closed.
 
 No physical-device, complete game-build, or real-save verification has been performed by the standalone suite. The rename protocol is recoverable rather than one atomic exchange; keep independent backups.
+
+## Audio and screen margins
+
+The Godot harness links the production settings/transform code and exercises
+real GUI input without game files. It checks persistence, corrupt settings,
+failed writes, inset bounds, CanvasLayer hit testing, raw pointer polling and
+restoring the full frame. Requires Godot 4.5.1 .NET and .NET 9:
+
+```bash
+python3 tests/run_margin_harness.py --godot /path/to/Godot
+```
+
+The generated harness scene and build outputs stay in ignored `.godot/`.
+Phone audio, native game settings rows and card dragging with margins require
+the [human verification steps](../docs/AUDIO_SCREEN_MARGINS.md). The synthetic
+suite cannot verify audibility, Bluetooth routing or iOS Home gestures.

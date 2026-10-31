@@ -1,0 +1,14 @@
+config_version=5
+[application]
+config/name="STS2 margin regression harness"
+run/main_scene="res://.godot/harness.tscn"
+config/features=PackedStringArray("4.5", "C#")
+[display]
+window/size/viewport_width=800
+window/size/viewport_height=600
+[dotnet]
+project/assembly_name="ScreenMarginsHarness"
+[input_devices]
+pointing/emulate_mouse_from_touch=true
+[rendering]
+renderer/rendering_method="gl_compatibility"
