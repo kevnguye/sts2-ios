@@ -1,8 +1,8 @@
-# Save transfer and recovery / 存档传输与恢复
+# Save transfer and recovery
 
 This fork changes the transfer format. Update the phone patch and desktop scripts together. Old inbox folders without a manifest and completion marker are ignored and left untouched. Re-send with the updated `push-save.sh`; do not add a marker to an old or partially transferred folder.
 
-本分支采用新传输格式：手机补丁与电脑脚本必须一起更新。旧收件箱不会自动导入，也不会删除。请用新版脚本重新传输。
+This branch uses a new transfer format: update the phone patch and desktop scripts together. Old inboxes are neither imported automatically nor deleted. Transfer again using the new scripts.
 
 ## Locations
 

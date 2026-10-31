@@ -31,8 +31,8 @@ public static class QuickRestartPatch
 {
     private const string ButtonName = "RestartRoom";
 
-    // postfix on MegaCrit.Sts2.Core.Nodes.Screens.PauseMenu.NPauseMenu._Ready (iOS/移动版).
-    // 加"一键重开"按钮 + 6 格存档位快照(时光回溯)。
+    // Postfix on NPauseMenu._Ready for iOS/mobile.
+    // Add Restart Room and six save/load snapshot buttons when their respective Extras are enabled.
     public static void ReadyPostfix(object __instance)
     {
         try
@@ -52,7 +52,7 @@ public static class QuickRestartPatch
         }
     }
 
-    // postfix on NPauseMenu._Ready (桌面精简版): 只加"一键重开", 不带快照(菜单更干净)。
+    // Desktop postfix on NPauseMenu._Ready: Restart Room only, without snapshot buttons.
     public static void RestartOnlyPostfix(object __instance)
     {
         AddRestartButton(__instance, false);
@@ -66,8 +66,8 @@ public static class QuickRestartPatch
         child.QueueFree();
     }
 
-    // 复制原生"保存并退出"按钮(样式/脚本自动一致), 改名改文案, 接一键重开。
-    // 返回原 saveBtn(供快照版复用), 失败/已存在返回 null。
+    // Clone the native Save and Quit button to preserve its style/script, then attach the restart action.
+    // Return the original saveBtn for snapshot-button reuse; return null on failure or if already present.
     private static Node AddRestartButton(object __instance, bool respectExtras = true)
     {
         try
@@ -122,7 +122,7 @@ public static class QuickRestartPatch
         {
             var locale = TranslationServer.GetLocale();
             if (!string.IsNullOrEmpty(locale) && locale.StartsWith("zh"))
-                return "重开本房间";
+                return "Restart Room";
         }
         catch
         {

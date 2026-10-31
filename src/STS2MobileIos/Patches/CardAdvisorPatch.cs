@@ -433,17 +433,17 @@ public static class CardAdvisorPatch
         int keys = profile.KeyCount(dom);
         if (dom == null || (keys == 0 && cards < 4 && relics == 0))
         {
-            text = zh ? "起手期 · 暂无明确方向，按强度选" : "Early — no clear direction yet";
+            text = zh ? "Early game: no clear direction; pick for strength" : "Early — no clear direction yet";
             color = new Color(0.82f, 0.82f, 0.82f);
         }
         else
         {
             string name = zh ? CardAdvisor.ArchNameZh(dom) : CardAdvisor.ArchNameEn(dom);
             string cnt = zh
-                ? $"{keys}张Key+{cards - keys}辅助" + (relics > 0 ? $"+{relics}遗物" : "")
+                ? $"{keys} key + {cards - keys} support cards" + (relics > 0 ? $"+{relics} relics" : "")
                 : $"{keys} key + {cards - keys} support" + (relics > 0 ? $"+{relics} relics" : "");
-            if (keys >= 3) { text = zh ? $"★ 已成型：{name}流（{cnt}）" : $"★ Committed: {name} ({cnt})"; color = new Color(1f, 0.84f, 0.2f); }
-            else { text = zh ? $"推荐方向：{name}流（{cnt}）" : $"Direction: {name} ({cnt})"; color = new Color(0.45f, 0.9f, 0.45f); }
+            if (keys >= 3) { text = zh ? $"★ Committed: {name} ({cnt})" : $"★ Committed: {name} ({cnt})"; color = new Color(1f, 0.84f, 0.2f); }
+            else { text = zh ? $"Suggested direction: {name} ({cnt})" : $"Direction: {name} ({cnt})"; color = new Color(0.45f, 0.9f, 0.45f); }
         }
 
         label.Text = text;
@@ -608,9 +608,9 @@ public static class CardAdvisorPatch
                         string.Join(", ", ArchWeightsString(profile)));
             // Log relics IN ORDER with index — to confirm whether relic[0] is the
             // character's auto-granted starting relic (which should not bias direction).
-            w.WriteLine("[advisor] relics(顺序): " +
+            w.WriteLine("[advisor] relics (in order): " +
                         (relicEntries == null || relicEntries.Count == 0
-                            ? "(无)"
+                            ? "(none)"
                             : string.Join(", ", relicEntries.Select((r, i) => $"[{i}]{r}"))));
             for (int i = 0; i < scored.Count; i++)
             {

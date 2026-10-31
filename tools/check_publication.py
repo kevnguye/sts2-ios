@@ -14,7 +14,11 @@ SUFFIXES = {'.dll', '.pck', '.ipa', '.app', '.framework', '.xcframework', '.a', 
             '.exe', '.bank', '.spskel', '.skel', '.atlas', '.tscn', '.tres', '.png', '.jpg', '.jpeg',
             '.webp', '.wav', '.ogg', '.mp3', '.ttf', '.otf', '.p12', '.pfx', '.mobileprovision',
             '.pem', '.key', '.save', '.zip', '.dmg', '.tpz'}
-REVIEWED_PDF = '2368c949d95ce68255ff71684914ec6367ad89d8ebbe3bcb1ca6a45eccc602b5'
+# Individually rendered/reviewed technical reports; retain the old hash for Git history.
+REVIEWED_PDFS = {
+    '2368c949d95ce68255ff71684914ec6367ad89d8ebbe3bcb1ca6a45eccc602b5',
+    '88495a86ec66843b6a6698c9519569f0b39864a5afb687dd628096f0e7767f6e',
+}
 PATTERNS = {
     'private key': re.compile(rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
     'GitHub token': re.compile(rb'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{40,})'),
@@ -32,7 +36,7 @@ def inspect(path, data):
         if pattern.search(data): problems.append(label)
     if path.endswith('.cs') and re.search(rb'^\s*namespace\s+MegaCrit\.', data, re.M):
         problems.append('possible decompiled game namespace')
-    if path.lower().endswith('.pdf') and hashlib.sha256(data).hexdigest() != REVIEWED_PDF:
+    if path.lower().endswith('.pdf') and hashlib.sha256(data).hexdigest() not in REVIEWED_PDFS:
         problems.append('PDF needs manual image/content review')
     if path.lower().endswith('.html') and re.search(rb'<(?:img|image|svg|object|embed)\b', data, re.I):
         problems.append('HTML embeds require manual review')

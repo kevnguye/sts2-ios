@@ -71,13 +71,13 @@ public static class ModelDbInitPatch
         var typeObjects = new Dictionary<Type, object>();
         int preRegCount = 0;
 
-        // iOS 卡死定位: 每步写进度文件。用纯 .NET 路径(不依赖 Godot 接口),首次失败响亮报出。
+        // Record initialization progress to a file to locate iOS hangs. Use plain .NET paths; report the first write failure.
         string progressPath = Path.Combine(
             System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments),
             "modeldb_progress.txt"
         );
         try { File.WriteAllText(progressPath, "INIT_START"); PatchHelper.Log($"progress → {progressPath}"); }
-        catch (Exception e) { PatchHelper.Log($"progress 写失败: {e.Message}"); progressPath = null; }
+        catch (Exception e) { PatchHelper.Log($"Writing progress failed: {e.Message}"); progressPath = null; }
         void Prog(string s) { try { if (progressPath != null) File.WriteAllText(progressPath, s); } catch { } }
 
         for (int i = 0; i < types.Length; i++)
