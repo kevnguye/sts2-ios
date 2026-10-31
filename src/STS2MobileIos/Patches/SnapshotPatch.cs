@@ -14,7 +14,7 @@ namespace STS2MobileIos.Patches;
 // adds six buttons to the in-game pause menu, wired in from QuickRestartPatch.ReadyPostfix
 // (one _Ready hook adds Restart Room + these six). Three fixed save slots, each with an
 // independent Save and Load button:
-//   存档位1/2/3 (Save Slot 1/2/3) and 读档位1/2/3 (Load Slot 1/2/3).
+// Save Slot 1/2/3 and Load Slot 1/2/3.
 //
 // Design — purely file-level, does NOT touch the game's save format or any game value.
 // Each slot is a folder user://snapshots/slot_<N>/ holding a full recursive copy of the
@@ -137,7 +137,7 @@ public static class SnapshotPatch
             SaveDirectoryStore.Replace(source, dest);
 
             // Record the run's current floor at save time so the button can show it
-            // (e.g. "存档位1 [第12层]"). Kept in a sibling meta file — never inside the
+            // For example, Save Slot 1 [Floor 12]. Stored in a sibling metadata file, never inside the
             // slot tree — so Load does not copy it back into the live save.
             SetSlotFloor(slot, GetCurrentFloor());
 
@@ -168,7 +168,7 @@ public static class SnapshotPatch
             var src = SlotPath(slot);
             if (!Directory.Exists(src) || !Directory.EnumerateFileSystemEntries(src).Any())
             {
-                // Empty slot: do nothing (the button label already shows [空]/[Empty]).
+                // Empty slot: do nothing (the button already shows [Empty]).
                 PatchHelper.Log($"[Snapshot] slot {slot} is empty, nothing to load");
                 return;
             }
@@ -194,7 +194,7 @@ public static class SnapshotPatch
     // so the weaver resolves it unambiguously). Fires only when a brand-new singleplayer
     // run starts — continuing a saved run goes through SetUpSavedSingleplayer, which we do
     // NOT hook, so loading a save never wipes the slots. Deletes the three slot folders and
-    // their floor meta files so the pause-menu buttons read [空] again for the new run.
+    // Delete their floor metadata too, so the pause-menu buttons show [Empty] for a new run.
     // (If the pause menu is already open its labels won't update until reopened — acceptable;
     // ReadyPostfix re-labels from disk every time the menu is opened.)
     public static void OnNewRun()
@@ -314,7 +314,7 @@ public static class SnapshotPatch
             if (floor.HasValue)
                 File.WriteAllText(meta, floor.Value.ToString());
             else if (File.Exists(meta))
-                File.Delete(meta); // unknown floor -> label degrades to [已存]/[Saved]
+                File.Delete(meta); // Unknown floor: fall back to [Saved].
         }
         catch (Exception ex)
         {
@@ -351,23 +351,23 @@ public static class SnapshotPatch
     private static string SaveLabelText(int slot, bool occupied, int? floor)
     {
         if (!occupied)
-            return IsChinese() ? $"存档位{slot}" : $"Save Slot {slot}";
-        return IsChinese() ? $"存档位{slot} {FloorTag(floor)}" : $"Save Slot {slot} {FloorTag(floor)}";
+            return IsChinese() ? $"Save Slot {slot}" : $"Save Slot {slot}";
+        return IsChinese() ? $"Save Slot {slot} {FloorTag(floor)}" : $"Save Slot {slot} {FloorTag(floor)}";
     }
 
     private static string LoadLabelText(int slot, bool occupied, int? floor)
     {
         if (!occupied)
-            return IsChinese() ? $"读档位{slot} [空]" : $"Load Slot {slot} [Empty]";
-        return IsChinese() ? $"读档位{slot} {FloorTag(floor)}" : $"Load Slot {slot} {FloorTag(floor)}";
+            return IsChinese() ? $"Load Slot {slot} [Empty]" : $"Load Slot {slot} [Empty]";
+        return IsChinese() ? $"Load Slot {slot} {FloorTag(floor)}" : $"Load Slot {slot} {FloorTag(floor)}";
     }
 
-    // Floor suffix for an occupied slot: "[第12层]"/"[Floor 12]" when the floor was
-    // captured, degrading to "[已存]"/"[Saved]" when it could not be read at save time.
+    // Occupied slots show [Floor 12] when the floor was captured,
+    // or [Saved] when the floor could not be read at save time.
     private static string FloorTag(int? floor)
     {
         if (floor.HasValue && floor.Value >= 0)
-            return IsChinese() ? $"[第{floor.Value}层]" : $"[Floor {floor.Value}]";
-        return IsChinese() ? "[已存]" : "[Saved]";
+            return IsChinese() ? $"[Floor {floor.Value}]" : $"[Floor {floor.Value}]";
+        return IsChinese() ? "[Saved]" : "[Saved]";
     }
 }

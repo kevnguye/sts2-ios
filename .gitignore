@@ -1,4 +1,4 @@
-# --- 版权红线：游戏本体 / 资产 / 反编译，永不入库 ---
+# Copyright boundary: never commit the game, its assets or decompiled source.
 *.dll
 *.pck
 *.ipa
@@ -7,7 +7,7 @@ sts2*.decompiled.*
 game-refs/
 extracted/
 
-# --- 第三方专有库（各自去官网下载）---
+# Proprietary third-party libraries: obtain them from the official sources.
 fmod-ios/
 fmod-libs/
 fmod-gdextension/
@@ -16,7 +16,7 @@ spine-runtimes/
 ios-export/addons/
 ios-export/prebuilt/
 
-# --- 构建产物 / 缓存 ---
+# Build outputs and caches.
 bin/
 obj/
 .godot/
@@ -27,11 +27,11 @@ ios-export/build/
 *.dylib
 *.so
 
-# --- 本地配置（含你的签名身份，绝不提交）---
+# Private local configuration, including signing identities: never commit.
 ios-export/config.sh
 ios-export/.work/
 
-# --- 本地/临时 ---
+# Local/temporary files.
 .DS_Store
 *.log
 *.pid

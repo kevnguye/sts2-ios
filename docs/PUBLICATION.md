@@ -69,3 +69,17 @@ IPAs, native SDK binaries, signing files or obvious tokens/private keys. The
 inherited seven-page report was rendered and inspected as technical documentation;
 no game artwork/screenshots were observed. That review is scoped to those files
 and does not replace checks on later commits, branches, releases or attachments.
+
+## English technical-report replacement
+
+The Chinese report was replaced in the current tree by
+[the English PDF](../share/technical_record.pdf) and
+[English HTML source](../share/technical_doc.html). The original remains in Git
+history. The translated seven-page PDF was rendered and visually inspected; it
+contains text/tables and no embedded images or game assets. Both individually
+reviewed report hashes are accepted by the publication guard so history checks
+continue to cover the original. Other PDFs still require manual review.
+
+To reproduce the English PDF, install ReportLab in a separate local Python
+environment, then run `python3 tools/render_technical_report.py` from the repo root.
+The renderer reads only the repository HTML and generates no external images.

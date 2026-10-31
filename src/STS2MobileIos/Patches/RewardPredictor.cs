@@ -8,63 +8,63 @@ using MegaCrit.Sts2.Core.Runs;
 
 namespace STS2MobileIos.Patches;
 
-// 奖励预测器(游戏内, 用 Rng 克隆 + 候选池)。
-// 给定"发牌位置的 Rewards 流克隆"+ options + pity, 精确复现将生成的三张卡。
-// 用游戏自己的 GetPossibleCards(全部过滤) 和 Rng.NextItem, 消除硬编码卡池误差, 通用所有角色。
+// In-game reward predictor using cloned RNG state and the candidate pool.
+// Given a Rewards RNG clone at the dealing position, options and pity, reproduce the three generated cards.
+// Use the game's GetPossibleCards filters and Rng.NextItem instead of hard-coded pools, for every character.
 public static class RewardPredictor
 {
     public struct Pred { public string Entry; public CardRarity Rarity; public bool Upgraded; public int Type; }
 
-    // clone: 已定位到发牌位置的 Rewards 流独立副本; pity: 当前卡稀有度保底值; a7: 进阶≥7
-    // dbg: 非空时逐卡记录内部 roll/阈值/offset/稀有度(定位分叉)
+    // clone: independent Rewards RNG copy at the dealing position; pity: current rarity pity value; a7: Ascension >= 7.
+    // dbg: when provided, record each card's roll, thresholds, offset and rarity to locate divergences.
     public static List<Pred> Predict(Player player, CardCreationOptions options, Rng clone,
         float pity, int actIndex, bool a7, List<string> dbg = null)
         => Predict(player, options, clone, pity, actIndex, a7, out _, dbg);
 
-    // finalPity: 三张卡发完后的保底值(供多步前瞻跨战斗结转)
+    // finalPity: pity after dealing all three cards, carried across combats during multi-step lookahead.
     public static List<Pred> Predict(Player player, CardCreationOptions options, Rng clone,
         float pity, int actIndex, bool a7, out float finalPity, List<string> dbg = null,
         int count = 3, bool usePity = true)
     {
         var res = new List<Pred>();
-        // ★扩池钩子: 游戏 CreateForReward 第一步就 Hook.ModifyCardRewardCreationOptions(扩池遗物如PrismaticGem并入全职业牌池)。
-        // 我们hook的是CreateForReward入参(钩子前的options), 必须自己应用同一钩子, 否则扩池遗物在场时池顺序错→NextItem选错卡。
+        // CreateForReward first calls Hook.ModifyCardRewardCreationOptions (for pool-expanding relics such as PrismaticGem).
+        // Our hook receives options before that call; apply it here too, or pool order and NextItem selection will differ.
         options = ApplyRewardOptionsHook(player, options);
         var oddsType = options.RarityOdds;
-        // 真实候选池: GetPossibleCards + 游戏的 FilterForPlayerCount(单人剔除 MultiplayerOnly 卡, 保序)。
-        // 少这一步会让 NextItem 下标错位 → 选错牌(Elite 尤其暴露)。
+        // Use GetPossibleCards plus FilterForPlayerCount, which removes MultiplayerOnly cards in solo play while preserving order.
+        // Omitting this shifts NextItem indices and selects the wrong card, especially for elite rewards.
         var baseCards = GameFilterForPlayerCount(player, options.GetPossibleCards(player)).ToList();
         var black = new HashSet<CardModel>();
         float upScale = a7 ? 0.125f : 0.25f;
 
         for (int i = 0; i < count; i++)
         {
-            // ① 稀有度: 直接用游戏静态 GetBaseOdds 拿阈值(反射), 零常量误差
+            // 1. Rarity: get thresholds directly from the game's static GetBaseOdds through reflection, without copied constants.
             float rareT = GameBaseOdds(oddsType, CardRarity.Rare);
             float uncT = GameBaseOdds(oddsType, CardRarity.Uncommon);
             float offset = (!usePity || oddsType == CardRarityOddsType.BossEncounter) ? 0f : pity;
             float roll = clone.NextFloat(1f);
             CardRarity rarity;
             float pityBefore = pity;
-            // 游戏逻辑: 稀有阈=rareBase+offset; 非稀有阈=uncommonBase+(rareBase+offset)。uncommon 阈必须叠加 rareBase!
+            // Game logic: rare threshold = rareBase + offset; uncommon threshold = uncommonBase + rareBase + offset.
             float rareThr = rareT + offset;
             float uncThr = uncT + rareThr;
             if (roll < rareThr) { rarity = CardRarity.Rare; if (usePity) pity = -0.05f; }
             else if (roll < uncThr) { rarity = CardRarity.Uncommon; if (usePity) pity = Bump(pity, a7); }
             else { rarity = CardRarity.Common; if (usePity) pity = Bump(pity, a7); }
-            dbg?.Add($"卡{i + 1}: roll={roll:R} rareT={rareT:R} uncT={uncT:R} off={offset:R}(pity前{pityBefore:R}) → {rarity} (rareThr={rareThr:R} uncThr={uncThr:R})");
+            dbg?.Add($"Card {i + 1}: roll={roll:R} rareT={rareT:R} uncT={uncT:R} off={offset:R}(pityBefore={pityBefore:R}) -> {rarity} (rareThr={rareThr:R} uncThr={uncThr:R})");
 
-            // 候选: 真实池去黑名单、取该稀有度(保序)。空则向上顺延(GetNextAllowedRarity)
+            // Remove blacklisted cards and filter the real pool by rarity, preserving order; advance if empty (GetNextAllowedRarity).
             var cands = Filter(baseCards, black, rarity);
             if (cands.Count == 0)
                 rarity = NextAllowed(baseCards, black, rarity, out cands);
             if (cands.Count == 0) break;
 
-            // ② 选卡(游戏原生 NextItem = 精确)
+            // 2. Choose a card using the game's native NextItem.
             var card = clone.NextItem<CardModel>(cands);
             black.Add(card.CanonicalInstance);
 
-            // ③ 升级(复现 RollForUpgrade, 恒消耗一次)
+            // 3. Reproduce RollForUpgrade, always consuming one RNG step.
             float up = clone.NextFloat(1f);
             float chance = rarity == CardRarity.Rare ? 0f : actIndex * upScale;
             bool upg = card.IsUpgradable && up <= chance;
@@ -77,7 +77,7 @@ public static class RewardPredictor
 
     static float Bump(float pity, bool a7) => System.MathF.Min(pity + (a7 ? 0.005f : 0.01f), 0.4f);
 
-    // 直接调游戏静态 CardRarityOdds.GetBaseOdds(oddsType, rarity)(非公开, 反射), 零常量误差。
+    // Call the game's nonpublic static CardRarityOdds.GetBaseOdds(oddsType, rarity), without copied constants.
     static System.Reflection.MethodInfo _getBaseOdds;
     static float GameBaseOdds(CardRarityOddsType t, CardRarity rarity)
     {
@@ -86,8 +86,8 @@ public static class RewardPredictor
         return (float)_getBaseOdds.Invoke(null, new object[] { t, rarity });
     }
 
-    // 应用游戏静态 Hook.ModifyCardRewardCreationOptions(runState, player, options) → 复现扩池遗物(PrismaticGem等)。
-    // 无扩池遗物时钩子原样返回 → 零副作用(基础预测不变)。反射调用(Hook 在 Core.Hooks)。
+    // Apply Hook.ModifyCardRewardCreationOptions(runState, player, options) for pool-expanding relics such as PrismaticGem.
+    // Without such relics, the hook returns options unchanged. Invoke through reflection (Hook is in Core.Hooks).
     static System.Reflection.MethodInfo _rewardOptHook;
     static CardCreationOptions ApplyRewardOptionsHook(Player player, CardCreationOptions options)
     {
@@ -102,11 +102,11 @@ public static class RewardPredictor
             if (_rewardOptHook != null)
                 return (CardCreationOptions)_rewardOptHook.Invoke(null, new object[] { runState, player, options });
         }
-        catch { }   // 钩子应用失败 → 退回原 options(基础预测仍准)
+        catch { }   // If the hook fails, fall back to the original options and the base prediction.
         return options;
     }
 
-    // 直接调游戏私有静态 CardFactory.FilterForPlayerCount(runState, options) → 逐位一致。
+    // Call the game's private static CardFactory.FilterForPlayerCount(runState, options) for matching results.
     static System.Reflection.MethodInfo _filterPlayerCount;
     static System.Reflection.PropertyInfo _runStateProp;
     static IEnumerable<CardModel> GameFilterForPlayerCount(Player player, IEnumerable<CardModel> pool)
@@ -121,7 +121,7 @@ public static class RewardPredictor
     static List<CardModel> Filter(List<CardModel> pool, HashSet<CardModel> black, CardRarity rar) =>
         pool.Where(c => c.Rarity == rar && !black.Contains(c.CanonicalInstance)).ToList();
 
-    // 向上顺延到池中存在的稀有度(带回绕): Common→Uncommon→Rare→Common
+    // Advance to a rarity available in the pool, wrapping Common -> Uncommon -> Rare -> Common.
     static CardRarity NextAllowed(List<CardModel> pool, HashSet<CardModel> black, CardRarity rar, out List<CardModel> cands)
     {
         var order = new[] { CardRarity.Common, CardRarity.Uncommon, CardRarity.Rare };

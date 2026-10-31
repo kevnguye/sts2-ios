@@ -6,11 +6,11 @@ using MegaCrit.Sts2.Core.Nodes.Rooms;
 
 namespace STS2MobileIos.Patches;
 
-// 游戏原代码 OrbCmd.AddSlots/RemoveSlots(416736) 的界面动画行漏写空保护:
+// Original OrbCmd.AddSlots/RemoveSlots (416736) omitted a null check in UI animation code.
 //   NCombatRoom.Instance?.GetCreatureNode(player.Creature).OrbManager?.AddSlotAnim(amount)
-//                        ^^^^^^^^^^^^^^^^ 返回 null 时直接 .OrbManager → NRE
-// 真玩家永远有界面节点所以从不炸; 战斗评判官的克隆生物没有节点 → 推演打法球牌(冰川等)必炸。
-// 修法: bool-prefix 整体替换, 逻辑与原版逐行一致, 只补上空保护。对真局行为零变化。
+// The value above can be null; dereferencing .OrbManager then throws an NRE.
+// Real players have UI nodes; simulated cloned creatures do not, so orb cards such as Glacier fail during simulation.
+// Replace with a bool prefix that preserves the original logic and adds null guards. Real gameplay is unchanged.
 public static class OrbCmdNullFix
 {
     public static bool AddSlotsPrefix(Player player, int amount, ref Task __result)
@@ -34,9 +34,9 @@ public static class OrbCmdNullFix
         return false;
     }
 
-    // NCombatRoom.AddCreature: 召唤链(虫群死亡生小怪等)给新怪建界面节点, 对克隆生物 NRE。
-    // 推演期间(SimScope 开测试模式)跳过建节点 — 状态层的 AddCreature 在 CombatState/CombatManager
-    // 已完成, 界面节点本就与战斗状态无关; 真局测试模式恒关 → 行为零变化。
+    // NCombatRoom.AddCreature creates UI nodes for summons (including creatures spawned on death), which fails for clones.
+    // Skip UI-node creation while SimScope enables test mode. CombatState/CombatManager have already added
+    // these creatures to the combat state; UI nodes are separate. Real gameplay leaves test mode off.
     public static bool AddCreatureUiPrefix()
-        => !MegaCrit.Sts2.Core.TestSupport.TestMode.IsOn;   // true=照常建节点, false=跳过
+        => !MegaCrit.Sts2.Core.TestSupport.TestMode.IsOn;   // true = create the node normally; false = skip it.
 }

@@ -29,8 +29,8 @@ public static class CardAdvisor
         public int Cost = -2;             // CanonicalEnergyCost; <0 means X / unknown
         public HashSet<string> Keywords = new();  // lowercase keyword names (exhaust, sly, retain...)
         public HashSet<string> Tags = new();      // lowercase tag names (shiv, minion, strike...)
-        public string Display;            // 展示用中文名(可空; 不参与评分)
-        public bool Removable = true;     // 是否可移除(进阶之灾等 Eternal 卡删不掉)
+        public string Display;            // Display name only (optional); not used for scoring.
+        public bool Removable = true;     // Whether the card can be removed; Eternal cards such as Ascender's Bane cannot be removed.
     }
 
     // An archetype defined by the "key" signals that identify it. Matching is done
@@ -84,51 +84,51 @@ public static class CardAdvisor
         // ---- Ironclad ----
         new()
         {
-            Key = "strength", NameEn = "Strength", NameZh = "力量",
+            Key = "strength", NameEn = "Strength", NameZh = "Strength",
             CardSignals = new[] { "inflame", "demonform", "whirlwind", "twinstrike", "rupture", "brand", "limitbreak", "spotweakness" },
             RelicSignals = new[] { "girya", "brimstone" },
         },
         new()
         {
-            Key = "block", NameEn = "Block", NameZh = "格挡",
+            Key = "block", NameEn = "Block", NameZh = "Block",
             CardSignals = new[] { "bodyslam", "barricade", "shrugitoff", "impervious", "juggernaut", "bloodwall", "stonearmor", "unmovable", "demonicshield" },
             RelicSignals = new[] { "bronzescales" },
         },
         new()
         {
-            Key = "exhaust", NameEn = "Exhaust", NameZh = "消耗",
+            Key = "exhaust", NameEn = "Exhaust", NameZh = "Exhaust",
             CardSignals = new[] { "corruption", "darkembrace", "feelnopain", "pactsend", "ashenstrike", "offering", "fiendfire", "secondwind" },
             RelicSignals = new[] { "charonsashes" },
             KeywordSignals = new[] { "exhaust" },
         },
         new()
         {
-            Key = "blood", NameEn = "Self-Damage", NameZh = "自伤流血",
+            Key = "blood", NameEn = "Self-Damage", NameZh = "Self-Damage/Bleed",
             CardSignals = new[] { "inferno", "breakthrough", "hemokinesis", "tearasunder", "crimsonmantle", "bloodletting", "feed", "hellraiser", "burningpact" },
         },
         new()
         {
-            Key = "vuln", NameEn = "Vulnerability", NameZh = "易伤",
+            Key = "vuln", NameEn = "Vulnerability", NameZh = "Vulnerability",
             CardSignals = new[] { "bash", "tremble", "bully", "cruelty", "dominate", "mangle" },
         },
 
         // ---- Silent ----
         new()
         {
-            Key = "poison", NameEn = "Poison", NameZh = "中毒",
+            Key = "poison", NameEn = "Poison", NameZh = "Poison",
             CardSignals = new[] { "poison", "noxiousfumes", "accelerant", "bubblebubble", "burst", "corrosive", "envenom", "corpseexplosion", "bouncingflask", "snakebite", "malaise", "outbreak" },
             RelicSignals = new[] { "sneckoskull", "twistedfunnel" },
         },
         new()
         {
-            Key = "shiv", NameEn = "Shiv/Blades", NameZh = "飞刀",
+            Key = "shiv", NameEn = "Shiv/Blades", NameZh = "Shiv",
             CardSignals = new[] { "accuracy", "knifetrap", "infiniteblades", "afterimage", "bladedance", "phantomblades", "hiddendaggers", "upmysleeve", "cloakanddagger", "flechettes", "dagger", "fanofknives", "finisher", "stormofsteel" },
             RelicSignals = new[] { "baghnakh", "kunai", "shuriken", "ninjascroll", "nunchaku" },
             KeywordSignals = new[] { "shiv" },
         },
         new()
         {
-            Key = "sly", NameEn = "Sly/Discard", NameZh = "诡诈弃牌",
+            Key = "sly", NameEn = "Sly/Discard", NameZh = "Sly/Discard",
             CardSignals = new[] { "toolsofthetrade", "tactician", "untouchable", "acrobatics", "masterplanner", "flickflack", "prepared" },
             RelicSignals = new[] { "kusarigama", "tingsha" },
             KeywordSignals = new[] { "sly" },
@@ -137,32 +137,32 @@ public static class CardAdvisor
         // ---- Defect ----
         new()
         {
-            Key = "lightning", NameEn = "Lightning", NameZh = "闪电",
+            Key = "lightning", NameEn = "Lightning", NameZh = "Lightning",
             CardSignals = new[] { "lightning", "zap", "thunder", "tempest", "tesla", "voltaic", "electro" },
             RelicSignals = new[] { "goldplatedcables" },
         },
         new()
         {
-            Key = "frost", NameEn = "Frost", NameZh = "冰霜",
+            Key = "frost", NameEn = "Frost", NameZh = "Frost",
             CardSignals = new[] { "chill", "coldsnap", "coolheaded", "glacier", "hailstorm", "icelance", "coolant", "capacitor" },
             RelicSignals = new[] { "permafrost" },
         },
         new()
         {
-            Key = "orb", NameEn = "Orb/Focus/Dark", NameZh = "充能球聚焦",
+            Key = "orb", NameEn = "Orb/Focus/Dark", NameZh = "Orbs/Focus",
             CardSignals = new[] { "defragment", "multicast", "darkness", "consum", "focus", "hologram", "biased" },
             RelicSignals = new[] { "crackedcore", "datadisk", "emotionchip", "metronome" },
         },
         new()
         {
-            Key = "claw", NameEn = "Claw/Zero-Cost", NameZh = "零费Claw",
+            Key = "claw", NameEn = "Claw/Zero-Cost", NameZh = "Zero-Cost Claw",
             CardSignals = new[] { "claw", "allforone", "scrape", "feral" },
         },
 
         // ---- Regent (new STS2 character) — community archetypes: Stars + Sovereign Blade ----
         new()
         {
-            Key = "stars", NameEn = "Star Engine", NameZh = "星辰",
+            Key = "stars", NameEn = "Star Engine", NameZh = "Stars",
             // Authoritative roster from slaythespire.wiki.gg "Stars" page (generation +
             // star-cost + synergy). Crescent Spear IS a star card (scales with 1-Star cards),
             // NOT forge — an earlier name-based misclassification.
@@ -182,7 +182,7 @@ public static class CardAdvisor
         },
         new()
         {
-            Key = "forge", NameEn = "Forge/Sovereign Blade", NameZh = "锻造(君主之刃)",
+            Key = "forge", NameEn = "Forge/Sovereign Blade", NameZh = "Forge (Sovereign Blade)",
             // Only community-confirmed forge cards. The weapon-NAMED cards I'd guessed in
             // (sword_sage/arsenal/heavenly_drill/refine_blade/beat_into_shape/crescent_spear)
             // are removed — several were wrong (crescent_spear is a Star card). Correctness
@@ -196,25 +196,25 @@ public static class CardAdvisor
         // ---- Necrobinder (new STS2 character) — community archetypes: Soul/Osty/Doom/Ethereal ----
         new()
         {
-            Key = "soul", NameEn = "Soul Cycle", NameZh = "灵魂",
+            Key = "soul", NameEn = "Soul Cycle", NameZh = "Souls",
             CardSignals = new[] { "haunt", "soulstorm", "dirge", "capturespirit", "deathmarch", "gravewarden", "severance", "reave", "soul" },
             RelicSignals = new[] { "josspaper" },
         },
         new()
         {
-            Key = "osty", NameEn = "Osty/Summon", NameZh = "召唤(Osty)",
+            Key = "osty", NameEn = "Osty/Summon", NameZh = "Summon (Osty)",
             CardSignals = new[] { "rattle", "fetch", "sicem", "pullaggro", "flatten", "boneshards", "unleash", "squeeze", "friendship", "legionofbone", "reanimate", "reaperform", "eidolon", "sentrymode", "bodyguard", "protector", "wisp", "righthandhand", "thescythe", "bone" },
             RelicSignals = new[] { "boneflute" },
             KeywordSignals = new[] { "minion" },
         },
         new()
         {
-            Key = "doom", NameEn = "Doom", NameZh = "厄运处决",
+            Key = "doom", NameEn = "Doom", NameZh = "Doom/Execution",
             CardSignals = new[] { "scourge", "negativepulse", "deathsdoor", "timesup", "deathbringer", "noescape", "doom" },
         },
         new()
         {
-            Key = "ethereal", NameEn = "Ethereal", NameZh = "虚无",
+            Key = "ethereal", NameEn = "Ethereal", NameZh = "Ethereal",
             CardSignals = new[] { "pullfrombelow", "defile", "veilpiercer", "bansheescry", "spiritofash" },
             KeywordSignals = new[] { "ethereal" },
         },
@@ -357,7 +357,7 @@ public static class CardAdvisor
             r.Score = -5;
             r.Grade = "D";
             r.ReasonEn = "Status/Curse";
-            r.ReasonZh = "状态/诅咒牌";
+            r.ReasonZh = "Status/Curse card";
             return r;
         }
 
@@ -381,16 +381,16 @@ public static class CardAdvisor
         string tier = CardData.GetTier(card.Entry);
         switch (tier)
         {
-            case "S": score += 3.0; Consider(1.5, "Top-tier card", "社区T0强卡"); break;
-            case "A": score += 2.0; Consider(1.0, "Strong card", "社区高分卡"); break;
+            case "S": score += 3.0; Consider(1.5, "Top-tier card", "Community top-tier card"); break;
+            case "A": score += 2.0; Consider(1.0, "Strong card", "Community highly rated card"); break;
             case "B": score += 1.0; break;
             case "C": score += 0.0; break;
             case "D": score -= 1.0; break;
-            case "F": score -= 2.0; Consider(1.0, "Community-rated weak", "社区差评卡"); break;
+            case "F": score -= 2.0; Consider(1.0, "Community-rated weak", "Community poorly rated card"); break;
             default: // unknown to the table → rarity as a weak proxy
                 switch (card.Rarity)
                 {
-                    case 4: case 5: score += 2.0; Consider(0.8, "Rare", "稀有"); break;
+                    case 4: case 5: score += 2.0; Consider(0.8, "Rare", "Rare"); break;
                     case 3: score += 1.0; break;
                     case 2: score += 0.0; break;
                     default: score -= 0.5; break;
@@ -428,7 +428,7 @@ public static class CardAdvisor
             {
                 bestSyn = syn;
                 synEn = isKey ? $"KEY of {a.NameEn}" : $"Fits {a.NameEn}";
-                synZh = isKey ? $"{a.NameZh}流Key卡" : $"契合{a.NameZh}流";
+                synZh = isKey ? $"Key card for {a.NameZh}" : $"Fits {a.NameZh}";
             }
         }
         if (bestSyn > 0)
@@ -444,17 +444,17 @@ public static class CardAdvisor
         double attackRatio = deck.PlayableCards > 0 ? (double)deck.Attacks / deck.PlayableCards : 0.5;
         if (card.Type == 1) // Attack
         {
-            if (attackRatio < 0.35) { score += 2.0; Consider(2.0, "Deck lacks damage", "牌组缺伤害"); }
+            if (attackRatio < 0.35) { score += 2.0; Consider(2.0, "Deck lacks damage", "Deck lacks damage"); }
             else if (attackRatio > 0.6) { score -= 1.0; }
         }
         else if (card.Type == 2) // Skill
         {
-            if (attackRatio > 0.6) { score += 1.0; Consider(1.0, "Adds utility", "补充功能牌"); }
+            if (attackRatio > 0.6) { score += 1.0; Consider(1.0, "Adds utility", "Adds utility"); }
         }
         else if (card.Type == 3) // Power
         {
             // Powers scale; slightly favoured while the deck is still small.
-            if (deck.TotalCards < 25) { score += 1.2; Consider(1.2, "Scaling power", "成长型能力牌"); }
+            if (deck.TotalCards < 25) { score += 1.2; Consider(1.2, "Scaling power", "Scaling power"); }
             else { score += 0.4; }
         }
 
@@ -465,7 +465,7 @@ public static class CardAdvisor
             if (deck.AvgCost >= 1.7 && card.Cost >= 3)
             {
                 score -= 1.5;
-                Consider(1.4, "Curve too heavy", "费用曲线偏高");
+                Consider(1.4, "Curve too heavy", "Cost curve is too high");
             }
             else if (card.Cost <= 1 && deck.AvgCost >= 1.6)
             {
@@ -478,7 +478,7 @@ public static class CardAdvisor
         if (deck.TotalCards >= 28 && card.Rarity <= 2 && bestSyn < 2.0)
         {
             score -= 1.2;
-            Consider(1.3, "Deck bloated, be picky", "牌组偏大，宜精简");
+            Consider(1.3, "Deck bloated, be picky", "Large deck; be selective");
         }
 
         r.Score = score;
@@ -487,7 +487,7 @@ public static class CardAdvisor
         if (string.IsNullOrEmpty(reasonEn))
         {
             reasonEn = card.Rarity == 2 ? "Filler" : "Playable";
-            reasonZh = card.Rarity == 2 ? "填充" : "可用";
+            reasonZh = card.Rarity == 2 ? "Filler" : "Playable";
         }
         r.ReasonEn = reasonEn;
         r.ReasonZh = reasonZh;
@@ -540,7 +540,7 @@ public static class CardAdvisor
         if (card.Type == 4 || card.Type == 5)
         {
             r.Score = -5; r.Grade = "D";
-            r.ReasonEn = "Can't gain"; r.ReasonZh = "无升级价值";
+            r.ReasonEn = "Can't gain"; r.ReasonZh = "No upgrade value";
             return r;
         }
 
@@ -550,24 +550,24 @@ public static class CardAdvisor
         string pri = CardUpgradeData.GetPriority(card.Entry);
         switch (pri)
         {
-            case "S": score += 5.0; reasonEn = "Top upgrade"; reasonZh = "必敲·收益极大"; break;
-            case "A": score += 3.5; reasonEn = "Strong upgrade"; reasonZh = "优先敲"; break;
-            case "B": score += 2.0; reasonEn = "Decent upgrade"; reasonZh = "可敲"; break;
-            case "C": score += 0.5; reasonEn = "Marginal"; reasonZh = "收益一般"; break;
-            case "D": score -= 2.0; reasonEn = "Skip"; reasonZh = "不值得敲"; break;
+            case "S": score += 5.0; reasonEn = "Top upgrade"; reasonZh = "Essential upgrade; very high value"; break;
+            case "A": score += 3.5; reasonEn = "Strong upgrade"; reasonZh = "Priority upgrade"; break;
+            case "B": score += 2.0; reasonEn = "Decent upgrade"; reasonZh = "Decent upgrade"; break;
+            case "C": score += 0.5; reasonEn = "Marginal"; reasonZh = "Marginal value"; break;
+            case "D": score -= 2.0; reasonEn = "Skip"; reasonZh = "Not worth upgrading"; break;
             default:
                 // Unknown: community rules as fallback.
                 if (card.Rarity == 1)
                 {
-                    score -= 3.0; reasonEn = "Basic, skip"; reasonZh = "基础牌·不值得敲";
+                    score -= 3.0; reasonEn = "Basic, skip"; reasonZh = "Basic card; skip upgrade";
                 }
                 else
                 {
                     string tier = CardData.GetTier(card.Entry);
-                    if (tier == "S" || tier == "A") { score += 2.0; reasonEn = "Strong card gains"; reasonZh = "强卡·升级收益好"; }
-                    else if (tier == "D" || tier == "F") { score -= 1.5; reasonEn = "Weak card"; reasonZh = "弱卡·先换不敲"; }
-                    else { score += 0.5; reasonEn = "Average"; reasonZh = "普通收益"; }
-                    if (card.Type == 3) { score += 1.0; if (reasonZh == "普通收益") { reasonEn = "Power scales"; reasonZh = "能力牌·全场生效"; } }
+                    if (tier == "S" || tier == "A") { score += 2.0; reasonEn = "Strong card gains"; reasonZh = "Strong card; good upgrade"; }
+                    else if (tier == "D" || tier == "F") { score -= 1.5; reasonEn = "Weak card"; reasonZh = "Weak card; replace first"; }
+                    else { score += 0.5; reasonEn = "Average"; reasonZh = "Average value"; }
+                    if (card.Type == 3) { score += 1.0; if (reasonZh == "Average value") { reasonEn = "Power scales"; reasonZh = "Power; applies throughout combat"; } }
                 }
                 break;
         }
@@ -586,7 +586,7 @@ public static class CardAdvisor
                 if (pri == null || isKey)
                 {
                     reasonEn = isKey ? $"KEY of {a.NameEn}" : reasonEn;
-                    reasonZh = isKey ? $"主流派Key卡·优先敲" : (pri == null ? "主流派核心·优先" : reasonZh);
+                    reasonZh = isKey ? $"Key archetype card; upgrade first" : (pri == null ? "Archetype core; prioritize" : reasonZh);
                     if (pri == null && !isKey) reasonEn = $"Core of {a.NameEn}";
                 }
                 break;

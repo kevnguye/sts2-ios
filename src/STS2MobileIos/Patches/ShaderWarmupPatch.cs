@@ -8,13 +8,13 @@ using Godot;
 
 namespace STS2MobileIos.Patches;
 
-// 首次启动预编译全部着色器,消除游戏中"遇到新画面时现场编译"的卡顿。
-// 移植自安卓 ShaderWarmupScreen,但做了三处 iOS 适配:
-//  1. 不继承 Node/Control —— 本补丁在独立 assembly(STS2MobileIos),不在 Godot 主 assembly
-//     的脚本注册表里,做成 Godot 节点其生命周期回调不会触发。改为纯静态逻辑 + SceneTree 信号驱动。
-//  2. 去掉全部 UI(进度条/面板依赖 Launcher.Components),改用 PatchHelper.Log 输出进度。
-//  3. 触发点: postfix NGame._EnterTree(游戏根节点进树,SceneTree+资源系统就绪),async 后台跑,
-//     不阻塞(安卓是阻塞式预热屏,我们无 Launcher,改后台;首次会卡一阵,写 marker 后永久跳过)。
+// Precompile shaders on first launch to reduce stalls when new visuals appear; coverage is not guaranteed.
+// Ported from Android ShaderWarmupScreen, with three iOS adaptations:
+// 1. Do not inherit Node/Control: this separate STS2MobileIos assembly is outside the main assembly's
+// script registry, so node lifecycle callbacks would not run. Use static logic and SceneTree signals instead.
+// 2. Remove the Launcher.Components progress panel and log progress through PatchHelper.Log.
+// 3. Start from NGame._EnterTree after SceneTree/resources exist; run asynchronously without blocking startup.
+// Android used a blocking warmup screen. Here, a marker skips later attempts after the first warmup.
 public static class ShaderWarmupPatch
 {
     private const int WarmupVersion = 5;
@@ -31,21 +31,21 @@ public static class ShaderWarmupPatch
         {
             if (!NeedsWarmup())
             {
-                PatchHelper.Log("[ShaderWarmup] 已预热过,跳过");
+                PatchHelper.Log("[ShaderWarmup] Already warmed up; skipping");
                 return;
             }
             var tree = __instance.GetTree();
             if (tree == null)
             {
-                PatchHelper.Log("[ShaderWarmup] SceneTree 不可用,跳过");
+                PatchHelper.Log("[ShaderWarmup] SceneTree unavailable; skipping");
                 return;
             }
-            // fire-and-forget 后台预热
+            // Start asynchronous warmup without awaiting it here.
             _ = RunWarmup(tree);
         }
         catch (Exception ex)
         {
-            PatchHelper.Log($"[ShaderWarmup] 触发失败: {ex.Message}");
+            PatchHelper.Log($"[ShaderWarmup] Start failed: {ex.Message}");
         }
     }
 
@@ -75,7 +75,7 @@ public static class ShaderWarmupPatch
         }
         catch (Exception ex)
         {
-            PatchHelper.Log($"[ShaderWarmup] 写 marker 失败: {ex.Message}");
+            PatchHelper.Log($"[ShaderWarmup] Writing marker failed: {ex.Message}");
         }
     }
 
@@ -84,7 +84,7 @@ public static class ShaderWarmupPatch
         var sw = Stopwatch.StartNew();
         try
         {
-            // 等主菜单先加载显示,减少与游戏启动的资源竞争
+            // Wait for the main menu to load/display to reduce startup resource contention.
             for (int f = 0; f < 30; f++)
                 await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             await tree.ToSignal(
@@ -93,7 +93,7 @@ public static class ShaderWarmupPatch
             );
 
             var materials = await CollectMaterialsAsync(tree);
-            PatchHelper.Log($"[ShaderWarmup] 收集到 {materials.Count} 个待编译着色器");
+            PatchHelper.Log($"[ShaderWarmup] Collected {materials.Count} shaders to compile");
 
             if (materials.Count == 0)
             {
@@ -131,7 +131,7 @@ public static class ShaderWarmupPatch
                     }
                     catch (Exception ex)
                     {
-                        PatchHelper.Log($"[ShaderWarmup] 建节点失败 {materials[j].path}: {ex.Message}");
+                        PatchHelper.Log($"[ShaderWarmup] Node creation failed for {materials[j].path}: {ex.Message}");
                     }
                 }
 
@@ -142,18 +142,18 @@ public static class ShaderWarmupPatch
                     node.QueueFree();
 
                 if (i % 64 == 0)
-                    PatchHelper.Log($"[ShaderWarmup] 进度 {batchEnd}/{total}");
+                    PatchHelper.Log($"[ShaderWarmup] Progress {batchEnd}/{total}");
             }
 
             viewport.QueueFree();
             WriteVersionMarker();
             PatchHelper.Log(
-                $"[ShaderWarmup] 完成: {total} 个着色器,耗时 {sw.ElapsedMilliseconds}ms。下次启动将跳过。"
+                $"[ShaderWarmup] Complete: {total} shaders in {sw.ElapsedMilliseconds}ms. Later launches will skip warmup."
             );
         }
         catch (Exception ex)
         {
-            PatchHelper.Log($"[ShaderWarmup] 预热失败: {ex}");
+            PatchHelper.Log($"[ShaderWarmup] Warmup failed: {ex}");
         }
     }
 
@@ -173,23 +173,23 @@ public static class ShaderWarmupPatch
         return new Sprite2D { Texture = whiteTex, Material = mat };
     }
 
-    // 每加载 N 个资源就让一帧, 防止首次从冷 pck 批量加载时主线程连续卡 >10s 触发看门狗。
+    // Yield a frame after every N resources to avoid >10-second main-thread stalls and the iOS watchdog.
     private const int YieldEvery = 4;
 
     private static async Task<List<(string path, Material mat)>> CollectMaterialsAsync(
         SceneTree tree
     )
     {
-        // 边加载边按 shader 去重: 每个材质刚加载出来(必然还活着)时立刻算 key 入表。
-        // 不能先攒进 dict、末尾再统一算 key —— 高频让帧期间 Godot 会驱逐已加载资源,
-        // 到统一去重时材质已被释放, GetShaderKey 抛 ObjectDisposedException 使整个预热中止。
+        // Deduplicate shaders immediately after loading each material, while it is still alive.
+        // Do not collect everything into a dictionary and calculate keys at the end: Godot can evict resources
+        // between yielded frames, causing GetShaderKey to throw ObjectDisposedException and abort warmup.
         var unique = new Dictionary<string, (string path, Material mat)>();
         int seen = 0;
 
-        // 1) 先只列路径(纯目录遍历, 便宜), 再异步逐个加载 + 即时去重, 高频让帧。
+        // 1. Collect paths cheaply, then load asynchronously and deduplicate immediately, yielding frequently.
         var matPaths = new List<string>();
         CollectMaterialPaths("res://", matPaths);
-        PatchHelper.Log($"[ShaderWarmup] 扫描 {matPaths.Count} 个材质/着色器资源");
+        PatchHelper.Log($"[ShaderWarmup] Scanning {matPaths.Count} material/shader resources");
         for (int i = 0; i < matPaths.Count; i++)
         {
             if (LoadAndAdd(matPaths[i], unique))
@@ -200,7 +200,7 @@ public static class ShaderWarmupPatch
 
         var scenePaths = new List<string>();
         CollectScenePaths("res://scenes", scenePaths);
-        PatchHelper.Log($"[ShaderWarmup] 扫描 {scenePaths.Count} 个场景");
+        PatchHelper.Log($"[ShaderWarmup] Scanning {scenePaths.Count} scenes");
 
         for (int i = 0; i < scenePaths.Count; i++)
         {
@@ -216,18 +216,18 @@ public static class ShaderWarmupPatch
             }
             catch (Exception ex)
             {
-                PatchHelper.Log($"[ShaderWarmup] 提取场景失败 {scenePaths[i]}: {ex.Message}");
+                PatchHelper.Log($"[ShaderWarmup] Scene extraction failed for {scenePaths[i]}: {ex.Message}");
             }
             if (i % YieldEvery == 0)
                 await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
 
-        PatchHelper.Log($"[ShaderWarmup] {seen} 个材质 → {unique.Count} 个唯一着色器");
+        PatchHelper.Log($"[ShaderWarmup] {seen} materials -> {unique.Count} unique shaders");
         return unique.Values.ToList();
     }
 
-    // 刚加载出的材质立刻算 key 入 unique 表; 单个被回收/异常只跳过不致命。
-    // 返回是否成功计入(仅用于统计)。
+    // Calculate the material key immediately and add it to unique; skip individual disposed/invalid resources.
+    // Return whether the resource was counted, for statistics only.
     private static bool TryAddUnique(
         Dictionary<string, (string path, Material mat)> unique,
         string path,
@@ -241,7 +241,7 @@ public static class ShaderWarmupPatch
         }
         catch (Exception ex)
         {
-            PatchHelper.Log($"[ShaderWarmup] 去重跳过 {path}: {ex.Message}");
+            PatchHelper.Log($"[ShaderWarmup] Deduplication skipped {path}: {ex.Message}");
             return false;
         }
     }
@@ -255,7 +255,7 @@ public static class ShaderWarmupPatch
         return mat.ResourcePath ?? mat.GetRid().ToString();
     }
 
-    // 只列候选资源路径(便宜的目录遍历, 不加载), 实际加载交给异步循环高频让帧。
+    // List candidate paths without loading; the asynchronous loop loads them with frequent frame yields.
     private static void CollectMaterialPaths(string dirPath, List<string> outPaths)
     {
         try
@@ -290,11 +290,11 @@ public static class ShaderWarmupPatch
         }
         catch (Exception ex)
         {
-            PatchHelper.Log($"[ShaderWarmup] 枚举失败 {dirPath}: {ex.Message}");
+            PatchHelper.Log($"[ShaderWarmup] Enumeration failed for {dirPath}: {ex.Message}");
         }
     }
 
-    // 加载单个材质/着色器资源, 成功则立刻算 key 入 unique 表(趁其还活着)。返回是否计入。
+    // Load one material/shader and add its key to unique while alive. Return whether it was counted.
     private static bool LoadAndAdd(
         string cleanPath,
         Dictionary<string, (string path, Material mat)> unique
@@ -333,7 +333,7 @@ public static class ShaderWarmupPatch
         }
         catch (Exception ex)
         {
-            PatchHelper.Log($"[ShaderWarmup] 加载失败 {cleanPath}: {ex.Message}");
+            PatchHelper.Log($"[ShaderWarmup] Loading failed for {cleanPath}: {ex.Message}");
             return false;
         }
     }
@@ -370,11 +370,11 @@ public static class ShaderWarmupPatch
         }
         catch (Exception ex)
         {
-            PatchHelper.Log($"[ShaderWarmup] 枚举场景失败 {dirPath}: {ex.Message}");
+            PatchHelper.Log($"[ShaderWarmup] Scene enumeration failed for {dirPath}: {ex.Message}");
         }
     }
 
-    // 从场景状态里提取材质, 每个刚取出即算 key 入 unique(趁其还活着)。返回计入数量。
+    // Extract scene materials and add each key to unique immediately. Return the number counted.
     private static int ExtractMaterialsFromSceneState(
         PackedScene packed,
         string scenePath,
@@ -409,7 +409,7 @@ public static class ShaderWarmupPatch
                 }
                 catch (Exception ex)
                 {
-                    PatchHelper.Log($"[ShaderWarmup] 读属性失败 {propName}@{scenePath}: {ex.Message}");
+                    PatchHelper.Log($"[ShaderWarmup] Reading property {propName}@{scenePath} failed: {ex.Message}");
                 }
             }
         }
