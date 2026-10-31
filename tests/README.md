@@ -16,6 +16,22 @@ The save tests cover cross-language manifests, incomplete/changed payloads, syml
 
 ## Human verification on a disposable profile
 
+The optional port features are controlled by **Settings → General → Extras** and
+default off. Enable Run Save Slots explicitly before testing snapshot operations.
+
+Preference persistence has a separate standalone check:
+
+```bash
+dotnet run --project tests/ExtraPreferences -c Release
+```
+
+For the Extras UI, check all three controls start unchecked, toggle each on/off,
+reopen Settings and restart the app to check persistence. Ensure the original
+Show Run Timer setting is unaffected. Verify Save Slots can be enabled while
+Restart Room is disabled, disabling slots hides their buttons without deleting
+slot data, and disabling Card Suggestions removes overlays and AdvisorTimer nodes.
+Check checkbox focus/navigation and the native explanation tooltips on the phone.
+
 1. Independently back up active saves on both devices. Use your own game files and development signing identity.
 2. Build the updated patch and deploy over the existing app with the same bundle ID. Do not uninstall. Full game/iOS compilation and NativeAOT compatibility are separate from these standalone tests.
 3. Close both games. Run `push-save.sh`, then launch the phone game. Confirm profile 1 imports and a different local profile remains intact. Confirm `default/1.previous` contains the old profile.

@@ -45,6 +45,19 @@ public static class SnapshotPatch
     // "Save and Quit" button, duplicated so layout/style/script match automatically.
     public static void AddButtons(Control container, Node template)
     {
+        if (!ExtraOptions.Enabled(ExtraFeature.SaveSlots))
+        {
+            if (container != null)
+                for (int i = 1; i <= SlotCount; i++)
+                    foreach (string name in new[] { SaveButtonName(i), LoadButtonName(i) })
+                    {
+                        var button = container.GetNodeOrNull(name);
+                        if (button == null) continue;
+                        container.RemoveChild(button);
+                        button.QueueFree();
+                    }
+            return;
+        }
         try
         {
             if (container == null || template == null)
@@ -59,7 +72,7 @@ public static class SnapshotPatch
 
             // "Restart Room" was inserted at index 1; place our six right below it.
             // Grouped: Save 1/2/3 first, then Load 1/2/3 (indices 2..7).
-            int index = 2;
+            int index = container.GetNodeOrNull("RestartRoom") == null ? 1 : 2;
             for (int n = 1; n <= SlotCount; n++)
             {
                 int slot = n; // capture per-iteration to avoid the shared-closure bug
@@ -108,6 +121,7 @@ public static class SnapshotPatch
 
     private static void OnSaveSlot(int slot, NClickableControl button)
     {
+        if (!ExtraOptions.Enabled(ExtraFeature.SaveSlots)) return;
         try
         {
             var source = SaveRootPath();
@@ -142,11 +156,13 @@ public static class SnapshotPatch
 
     private static void OnLoadSlot(int slot, NClickableControl _)
     {
+        if (!ExtraOptions.Enabled(ExtraFeature.SaveSlots)) return;
         TaskHelper.RunSafely(LoadSlotAsync(slot));
     }
 
     private static async Task LoadSlotAsync(int slot)
     {
+        if (!ExtraOptions.Enabled(ExtraFeature.SaveSlots)) return;
         try
         {
             var src = SlotPath(slot);
@@ -183,6 +199,7 @@ public static class SnapshotPatch
     // ReadyPostfix re-labels from disk every time the menu is opened.)
     public static void OnNewRun()
     {
+        if (!ExtraOptions.Enabled(ExtraFeature.SaveSlots)) return;
         try
         {
             for (int n = 1; n <= SlotCount; n++)

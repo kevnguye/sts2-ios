@@ -17,6 +17,13 @@ public static class TouchInputPatches
         try
         {
             var inputEvt = (InputEvent)inputEvent;
+            if (PatchHelper.DiagnosticsEnabled)
+            {
+                if (inputEvt is InputEventMouseButton button)
+                    PatchHelper.Log($"[Touch] mouse button={button.ButtonIndex}, pressed={button.Pressed}, eventPosition={button.Position}, viewportMouse={((Node)__instance).GetViewport().GetMousePosition()}");
+                else if (inputEvt is InputEventScreenTouch touch)
+                    PatchHelper.Log($"[Touch] screen index={touch.Index}, pressed={touch.Pressed}, position={touch.Position}");
+            }
             if (
                 inputEvt is InputEventMouseButton mouseBtn
                 && mouseBtn.ButtonIndex == MouseButton.Left
