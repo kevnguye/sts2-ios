@@ -482,6 +482,7 @@ game update. Re-check gameplay and save loading after an update.
 | Xcode says project changed/reloading | Close the StS2 project before regeneration, keep the exported version on disk, then reopen after export completes |
 | Untrusted developer / Developer Mode disabled | Complete your own identity trust and Developer Mode prompts on the phone |
 | App expires or will not open after its signing period | Refresh over the same app/team/bundle; do not uninstall |
+| Black screen and Xcode shows `Thread 1: signal SIGUSR1` | The debugger paused the runtime. Use the project-local LLDB setup in [startup troubleshooting](IOS_PERFORMANCE.md#black-screen-when-launching-from-xcode), then resume; do not delete the app |
 | Logo hang, missing pack, no sound or combat glitches | Distinguish successful signing from runtime compatibility; use current known-issues notes and reviewed private logs |
 
 For a GitHub issue, share the error message and tool/game version details after

@@ -63,6 +63,11 @@ unsigned int *load_all_fmod_plugins(void *, unsigned int *count) {
     launch = tree.find('LaunchAction')
     if launch is None: raise ValueError('Missing Xcode launch configuration')
     launch.set('buildConfiguration', 'Release')
+    # Keep the runtime's coordination signal deliverable without an LLDB stop.
+    # This is project-local; other projects and crash signals retain their settings.
+    shutil.copyfile(Path(__file__).resolve().parents[1] / 'ios-export/native/NativeAot.lldbinit',
+                    build / 'StS2/NativeAot.lldbinit')
+    launch.set('customLLDBInitFile', '$(SRCROOT)/StS2/NativeAot.lldbinit')
     tree.write(scheme, encoding='utf-8', xml_declaration=True)
 
 

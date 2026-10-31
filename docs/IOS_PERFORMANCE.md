@@ -55,3 +55,36 @@ FPS alone can hide a perceptible stall.
 
 Build checks and save-tool tests do not establish animation smoothness or replace
 these physical-device checks. Save migration is independent of frame pacing.
+
+## Black screen when launching from Xcode
+
+A device startup investigation found Xcode paused on **Thread 1: signal SIGUSR1**
+before the MegaCrit intro. The app was alive but could not continue while the
+debugger held it. Passing that signal through without stopping resumed startup,
+and the user confirmed the logo and menu appeared. This is a debugger-specific
+case, not an explanation for every black screen or a missing pack.
+
+The .NET runtime uses SIGUSR1 during normal runtime coordination; see its
+[LLDB debugging guidance](https://github.com/dotnet/runtime/blob/main/docs/workflow/debugging/coreclr/debugging-runtime.md).
+The export finalizer now copies a project-local `NativeAot.lldbinit` and sets
+**Edit Scheme → Run → Info → LLDB Init File** to
+`$(SRCROOT)/StS2/NativeAot.lldbinit`. Its single command keeps delivery enabled:
+
+```text
+process handle --pass true --stop false --notify false SIGUSR1
+```
+
+Other signals keep their existing behavior; real exceptions and crash signals
+are still available for investigation. No global LLDB configuration is changed.
+
+For an already exported project, copy `ios-export/native/NativeAot.lldbinit` to
+`ios-export/build/StS2/NativeAot.lldbinit` and set the scheme field above. For the
+currently paused session, enter the command in Xcode's LLDB console, then
+`continue`. Regenerating through the updated build script applies the setting
+for future launches automatically. Do not uninstall the app or erase saves.
+
+Human check: with Debug executable enabled, stop/run a fresh Xcode session and
+confirm it reaches the intro/menu without stopping on SIGUSR1; optionally pause
+and query `process handle SIGUSR1` to confirm PASS=true, STOP=false, NOTIFY=false.
+If startup still stalls without that stop reason, collect the new console/stack
+rather than treating this command as a general startup fix.

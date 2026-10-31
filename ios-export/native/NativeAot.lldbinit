@@ -1,0 +1,3 @@
+# NativeAOT uses SIGUSR1 for runtime coordination on Apple platforms.
+# Deliver it to the runtime without pausing an Xcode-launched game.
+process handle --pass true --stop false --notify false SIGUSR1
