@@ -11,8 +11,9 @@ This project is not affiliated with or endorsed by MegaCrit.
 
 ## Start here
 
-- **[Beginner setup guide](docs/BEGINNER_GUIDE.md)** — Mac prerequisites, local
-  dependencies, configuration, build, iPhone installation and renewal.
+- **[Do-it-yourself user guide](docs/BEGINNER_GUIDE.md)** — step-by-step Mac setup,
+  native dependencies, signing, installation, troubleshooting and renewal, with
+  **[free vs paid Apple Account differences](docs/BEGINNER_GUIDE.md#read-this-first-free-apple-account-or-paid-membership)**.
 - **[Native library recipe](docs/NATIVE_LIBRARIES.md)** — the tested versions and
   commands for the FMOD/Spine extensions.
 - **[Publication and licensing rules](docs/PUBLICATION.md)** — what must stay
