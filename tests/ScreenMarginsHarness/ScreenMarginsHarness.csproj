@@ -1,0 +1,10 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/STS2MobileIos/ScreenMargins.cs" Link="ScreenMargins.cs" />
+    <Compile Include="../../src/STS2MobileIos/ScreenMarginSettings.cs" Link="ScreenMarginSettings.cs" />
+  </ItemGroup>
+</Project>

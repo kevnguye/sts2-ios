@@ -60,6 +60,7 @@ public static class UiScalePatches
             (int)Math.Round(1680.0 / scale),
             (int)Math.Round(1080.0 / scale)
         );
+        ScreenMargins.Apply();
     }
 
     public static void ApplyUiScale()

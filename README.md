@@ -62,3 +62,5 @@ every use. Obtain the rights required for your use and do not redistribute a
 compiled game or its asset pack.
 
 [Archived upstream overview (English)](README_ARCHIVE.md) · [Technical background](docs/DESIGN.md) · [English technical report](share/technical_record.pdf)
+
+[Audio and screen-margin update / device verification](docs/AUDIO_SCREEN_MARGINS.md)
