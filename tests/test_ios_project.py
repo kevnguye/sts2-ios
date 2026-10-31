@@ -3,6 +3,7 @@ import plistlib
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from finalize_ios_project import finalize
@@ -41,3 +42,12 @@ class IosProjectTests(unittest.TestCase):
             self.assertNotIn('UIBackgroundModes', info)
             self.assertTrue(plistlib.loads((app / 'StS2.entitlements').read_bytes())['get-task-allow'])
             self.assertIn('buildConfiguration="Release"', scheme.read_text())
+
+            launch = ET.parse(scheme).getroot().find('LaunchAction')
+            self.assertEqual(launch.get('customLLDBInitFile'), '$(SRCROOT)/StS2/NativeAot.lldbinit')
+            init = app / 'NativeAot.lldbinit'
+            self.assertEqual(init.read_bytes(), (Path(__file__).resolve().parents[1] /
+                'ios-export/native/NativeAot.lldbinit').read_bytes())
+            commands = [line for line in init.read_text().splitlines()
+                        if line.strip() and not line.lstrip().startswith('#')]
+            self.assertEqual(commands, ['process handle --pass true --stop false --notify false SIGUSR1'])
